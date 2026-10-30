@@ -1,0 +1,13 @@
+node_modules/
+dist/
+backend/out/
+out/
+release/
+__pycache__/
+*.py[cod]
+*.zip
+*.tar.gz
+.env
+.env.*
+*.key
+*.pem
