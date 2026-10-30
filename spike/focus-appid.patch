@@ -1,0 +1,10 @@
+--- a/gamescope-pipewire.c
++++ b/gamescope-pipewire.c
+@@ -13,1 +13,3 @@
+ #define GAMESCOPE_REQUESTED_SIZE 0x70000
++#define GAMESCOPE_FOCUS_APPID 0x70001
++#define YOUTUBE_TV_APPID 3609786786ULL
+@@ -230,1 +232,2 @@
+-            GAMESCOPE_REQUESTED_SIZE, SPA_POD_Rectangle(&preferred))
++            GAMESCOPE_FOCUS_APPID, SPA_POD_Long(YOUTUBE_TV_APPID),
++            GAMESCOPE_REQUESTED_SIZE, SPA_POD_Rectangle(&preferred))
