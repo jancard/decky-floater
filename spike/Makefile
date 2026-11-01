@@ -3,12 +3,14 @@ CFLAGS ?= -O2 -Wall -Wextra -Werror -std=c11
 X11_FLAGS := $(shell pkg-config --cflags --libs x11 xext xrender)
 DMABUF_FLAGS := $(shell pkg-config --cflags --libs x11 xcomposite xcb xcb-dri3 egl gbm libdrm glesv2)
 MIRROR_FLAGS := $(shell pkg-config --cflags --libs x11 xext xrender xcomposite xdamage xfixes)
+PIP_FLAGS := $(shell pkg-config --cflags --libs libpipewire-0.3 x11 xext xrender xcomposite xdamage xfixes)
 TARGET := ../out/x11-overlay-probe
 DMABUF_TARGET := ../out/xcomposite-dmabuf-probe
 MIRROR_TARGET := ../out/mangoapp-mirror-probe
+PIP_TARGET := ../out/pip-prototype
 
 .PHONY: all
-all: $(TARGET) $(DMABUF_TARGET) $(MIRROR_TARGET)
+all: $(TARGET) $(DMABUF_TARGET) $(MIRROR_TARGET) $(PIP_TARGET)
 
 $(TARGET): x11-overlay-probe.c
 	mkdir -p ../out
@@ -21,3 +23,8 @@ $(DMABUF_TARGET): xcomposite-dmabuf-probe.c
 $(MIRROR_TARGET): mangoapp-mirror-probe.c
 	mkdir -p ../out
 	$(CC) $(CFLAGS) $< -o $@ $(MIRROR_FLAGS)
+
+# PipeWire headers need GNU extensions (locale_t).
+$(PIP_TARGET): pip-prototype.c
+	mkdir -p ../out
+	$(CC) $(CFLAGS) -std=gnu11 $< -o $@ $(PIP_FLAGS)
