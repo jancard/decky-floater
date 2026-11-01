@@ -10,6 +10,7 @@ Status: Phase 0 complete, NO-GO for the current capture/overlay architecture (20
 4. If PipeWire focus capture is unsuitable, build `xcomposite-dmabuf-probe` with `make -C spike` and run it with an Xwayland window ID (for example `./out/xcomposite-dmabuf-probe 0x3000002`). It names the window pixmap, exports it through DRI3, imports the DMA-BUF through GBM EGL, and samples a 32x32 grid ten times for changing pixels. Test with a browser and a WSI Vulkan app; this finite sample does not measure sustained rendering performance.
 5. Confirm an unfocused app continues audio/video playback and determine whether its PipeWire audio stream can be controlled as the plugin user.
 6. Verify drain-before-disconnect shutdown behavior for every capture path.
+7. Build `mangoapp-mirror-probe` with `make -C spike` and run `DISPLAY=:0 ./out/mangoapp-mirror-probe [seconds] [center]`. Gamescope 3.16.25 paints only one `GAMESCOPE_EXTERNAL_OVERLAY` window (topmost, highest opacity), so the probe keeps itself above mangoapp, copies mangoapp's damaged pixels into its own overlay with XRender, and draws a 640x360 Picture in Picture placeholder bottom right (or centred). It reports damage, copied pixels, re-raises, source/copy hash changes, and CPU every 5 s.
 
 ## Overlay Probe Smoke Test
 
@@ -41,6 +42,13 @@ Status: Phase 0 complete, NO-GO for the current capture/overlay architecture (20
 - 2026-10-30, HTPC host `htpc`: PipeWire audio node `73` maps to client `74`, process `mpv` PID `697144`, whose parent is the Firefox process PID `598619` for the YouTube TV shortcut.
 - As the normal HTPC user, `wpctl set-volume 73 1.00` succeeded and read back `Volume: 1.00`; this verified control permission without changing the level. Mute behavior and mapping across other apps remain untested.
 
+## MangoHud Mirror Smoke Test
+
+- 2026-11-01, HTPC, Gamescope 3.16.25, HyperHDR active (the probe does not use PipeWire). mangoapp is a GLFW/GLX window titled `mangoapp overlay window` on `:0`, sized 3840x2160 at 0,0. It sets `GAMESCOPE_EXTERNAL_OVERLAY` to 1 and maps when shown, and sets it to 0 and unmaps when hidden.
+- A pixmap named once with `XCompositeNameWindowPixmap` never changed (`0/5` hash changes despite ~100 damage events/s), consistent with Present flips replacing the window pixmap. An XRender picture on the mangoapp window itself follows the current buffer: source and copy hashes changed on every 1 s sample.
+- The user confirmed MangoHud and the placeholder box were visible together with MangoHud updating. Across three off/on toggles and a level change, MangoHud returned each time, the probe re-raised above the newly mapped mangoapp window, the box stayed visible, mirroring and CPU dropped to zero while MangoHud was off, and there were no X errors. SIGINT shutdown was clean.
+- Cost: probe CPU 1.0-1.4% while mirroring. mangoapp damages its full 4K window every frame, so the probe copied roughly 0.7-1.0 Gpixel/s on the GPU; restricting copies to the HUD bounds is an optimisation for the prototype. The box sits under the QAM, which is acceptable. Game-running and HDR behavior remain untested.
+
 ## Decision Gate
 
 Test platform: HTPC with Intel Arc B580, Gamescope 3.16.25, and Xwayland displays `:0`/`:1`.
@@ -55,3 +63,5 @@ Evidence:
 - The PipeWire reader drained on SIGINT, reported 300 buffers, and did not crash Gamescope. Audio node/client/process mapping was resolved; `wpctl set-volume` succeeded at the unchanged 1.00 level.
 
 Re-entry criteria: demonstrate a capture path that returns changing frames while HyperHDR remains active; demonstrate coexistence with MangoHud; and confirm sustained sampling performance, browser and WSI Vulkan behavior, and safe teardown. The tested audio mapping and volume permission can be reused. No plugin backend or UI implementation should start until a viable capture strategy is demonstrated.
+
+Update 2026-11-01: HyperHDR coexistence is no longer required; Picture in Picture may own the Gamescope PipeWire stream while active. MangoHud coexistence is demonstrated by the mirror probe above. Remaining before Phase 1: an end-to-end PipeWire `focus_appid` to overlay prototype with sustained performance, focus swaps, and safe teardown.
