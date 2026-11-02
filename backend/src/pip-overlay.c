@@ -516,6 +516,22 @@ static bool source_is_running(struct helper *helper)
     return false;
 }
 
+static void emit_apps(struct helper *helper)
+{
+    unsigned long apps[64];
+    unsigned long count = 0;
+    get_cardinals(helper->display, helper->root, helper->focusable_apps_atom, apps, 64, &count);
+    char list[64 * 12 + 1] = "";
+    size_t used = 0;
+    for (unsigned long index = 0; index < count; index++)
+        used += (size_t)snprintf(list + used, sizeof(list) - used, "%s%" PRIu32,
+            index ? "," : "", (uint32_t)apps[index]);
+    unsigned long focused = 0;
+    get_cardinals(helper->display, helper->root, helper->focused_app_atom, &focused, 1, &count);
+    emit("{\"event\":\"apps\",\"focused\":%" PRIu32 ",\"running\":[%s]}",
+        count == 1 ? (uint32_t)focused : 0, list);
+}
+
 /* X11 events */
 
 static Window event_window(const XEvent *event)
@@ -1031,6 +1047,9 @@ static void handle_command(struct helper *helper, const char *line)
     case PIP_VERB_HIDE:
         helper->active = false;
         stop_capture(helper, AFTER_NONE, "hidden");
+        break;
+    case PIP_VERB_APPS:
+        emit_apps(helper);
         break;
     case PIP_VERB_QUIT:
         helper->active = false;

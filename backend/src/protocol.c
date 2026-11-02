@@ -121,6 +121,8 @@ int pip_parse_command(const char *line, struct pip_command *command, char *error
         command->verb = PIP_VERB_SET;
     else if (strcmp(verb, "hide") == 0)
         command->verb = PIP_VERB_HIDE;
+    else if (strcmp(verb, "apps") == 0)
+        command->verb = PIP_VERB_APPS;
     else if (strcmp(verb, "quit") == 0)
         command->verb = PIP_VERB_QUIT;
     else
@@ -128,7 +130,8 @@ int pip_parse_command(const char *line, struct pip_command *command, char *error
 
     char *token;
     while ((token = strtok_r(NULL, " \t\r\n", &saveptr)) != NULL) {
-        if (command->verb == PIP_VERB_HIDE || command->verb == PIP_VERB_QUIT)
+        if (command->verb == PIP_VERB_HIDE || command->verb == PIP_VERB_QUIT ||
+            command->verb == PIP_VERB_APPS)
             return fail(error, error_size, "%s takes no arguments", verb);
         if (parse_pair(token, command, error, error_size) < 0)
             return -1;

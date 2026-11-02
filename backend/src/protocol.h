@@ -15,6 +15,7 @@ enum pip_verb {
     PIP_VERB_SHOW,
     PIP_VERB_SET,
     PIP_VERB_HIDE,
+    PIP_VERB_APPS,
     PIP_VERB_QUIT,
 };
 
@@ -56,6 +57,7 @@ static const struct pip_settings pip_default_settings = {
  *   show appid=N [corner=top-left|top-right|bottom-left|bottom-right] [scale=F] [opacity=F] [fps=N]
  *   set [corner=...] [scale=F] [opacity=F] [fps=N]
  *   hide
+ *   apps
  *   quit
  * Returns 0 on success, -1 with a message in error on failure.
  */

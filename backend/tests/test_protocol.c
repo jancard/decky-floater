@@ -75,6 +75,8 @@ static void test_set_and_apply(void)
     CHECK(settings.opacity == pip_default_settings.opacity);
 
     CHECK(parse("hide", &command, error) == 0 && command.verb == PIP_VERB_HIDE);
+    CHECK(parse("apps", &command, error) == 0 && command.verb == PIP_VERB_APPS);
+    CHECK(parse("apps all", &command, error) < 0);
     CHECK(parse("quit\r\n", &command, error) == 0 && command.verb == PIP_VERB_QUIT);
     CHECK(strcmp(pip_corner_name(PIP_CORNER_TOP_RIGHT), "top-right") == 0);
 }
