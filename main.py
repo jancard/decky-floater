@@ -2,6 +2,7 @@ import asyncio
 import json
 import os
 import re
+import shutil
 from pathlib import Path
 
 import decky
@@ -285,11 +286,21 @@ class Plugin:
         if self._helper is not None and self._helper.alive:
             return
         environment = dict(self._environment, DISPLAY=read_display(self._runtime))
-        path = str(Path(decky.DECKY_PLUGIN_DIR, "bin", HELPER_NAME))
-        self._helper = Helper(path, environment, self._on_event)
+        self._helper = Helper(self._helper_path(), environment, self._on_event)
         ready = await self._helper.start()
         if not ready.get("gamescope_stream"):
             decky.logger.warning("Gamescope's PipeWire stream is not available yet")
+
+    def _helper_path(self):
+        installed = Path(decky.DECKY_PLUGIN_DIR, "bin", HELPER_NAME)
+        if os.access(installed, os.X_OK):
+            return str(installed)
+        # ZIP installs can drop the executable bit, and the plugin directory is root-owned.
+        private = Path(decky.DECKY_PLUGIN_RUNTIME_DIR, HELPER_NAME)
+        private.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(installed, private)
+        private.chmod(0o755)
+        return str(private)
 
     async def _on_event(self, event):
         kind = event.get("event")

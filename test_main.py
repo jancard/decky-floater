@@ -15,6 +15,7 @@ decky.logger = logging.getLogger("floater-test")
 decky.emit = AsyncMock()
 decky.DECKY_PLUGIN_DIR = "/nonexistent"
 decky.DECKY_PLUGIN_SETTINGS_DIR = "/nonexistent"
+decky.DECKY_PLUGIN_RUNTIME_DIR = "/nonexistent"
 sys.modules["decky"] = decky
 
 import main  # noqa: E402
@@ -149,6 +150,21 @@ class PluginTests(unittest.IsolatedAsyncioTestCase):
         with patch("os.getuid", return_value=0):
             with self.assertRaisesRegex(RuntimeError, "root flag"):
                 await Plugin()._main()
+
+    async def test_helper_path_falls_back_to_executable_copy(self):
+        with tempfile.TemporaryDirectory() as plugin_dir, tempfile.TemporaryDirectory() as runtime_dir:
+            installed = Path(plugin_dir, "bin", main.HELPER_NAME)
+            installed.parent.mkdir()
+            installed.write_bytes(b"binary")
+            installed.chmod(0o644)
+            with patch.object(decky, "DECKY_PLUGIN_DIR", plugin_dir), \
+                    patch.object(decky, "DECKY_PLUGIN_RUNTIME_DIR", runtime_dir):
+                private = Path(self.plugin._helper_path())
+                self.assertEqual(private.parent, Path(runtime_dir))
+                self.assertTrue(os.access(private, os.X_OK))
+                self.assertEqual(private.read_bytes(), b"binary")
+                installed.chmod(0o755)
+                self.assertEqual(self.plugin._helper_path(), str(installed))
 
     async def test_start_success(self):
         self.plugin._helper = FakeHelper([{"event": "starting", "appid": 42}])
