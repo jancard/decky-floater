@@ -24,6 +24,7 @@ struct pip_settings {
     double scale;
     double opacity;
     unsigned int fps;
+    unsigned int border;
 };
 
 struct pip_command {
@@ -34,6 +35,7 @@ struct pip_command {
     bool has_scale;
     bool has_opacity;
     bool has_fps;
+    bool has_border;
     struct pip_settings settings;
 };
 
@@ -43,6 +45,7 @@ struct pip_command {
 #define PIP_OPACITY_MAX 1.00
 #define PIP_FPS_MIN 1u
 #define PIP_FPS_MAX 60u
+#define PIP_BORDER_MAX 20u
 #define PIP_MAX_LINE 512
 
 static const struct pip_settings pip_default_settings = {
@@ -50,12 +53,13 @@ static const struct pip_settings pip_default_settings = {
     .scale = 0.25,
     .opacity = 1.0,
     .fps = 30,
+    .border = 0,
 };
 
 /*
  * One command per line: a verb followed by key=value pairs.
- *   show appid=N [corner=top-left|top-right|bottom-left|bottom-right] [scale=F] [opacity=F] [fps=N]
- *   set [corner=...] [scale=F] [opacity=F] [fps=N]
+ *   show appid=N [corner=top-left|top-right|bottom-left|bottom-right] [scale=F] [opacity=F] [fps=N] [border=N]
+ *   set [corner=...] [scale=F] [opacity=F] [fps=N] [border=N]
  *   hide
  *   apps
  *   quit

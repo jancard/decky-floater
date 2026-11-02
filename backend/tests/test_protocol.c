@@ -23,9 +23,10 @@ static void test_show(void)
 {
     struct pip_command command;
     char error[128];
-    CHECK(parse("show appid=3609786786 corner=top-left scale=0.3 opacity=0.8 fps=60\n", &command, error) == 0);
+    CHECK(parse("show appid=3609786786 corner=top-left scale=0.3 opacity=0.8 fps=60 border=4\n", &command, error) == 0);
     CHECK(command.verb == PIP_VERB_SHOW);
     CHECK(command.appid == 3609786786u);
+    CHECK(command.settings.border == 4 && command.has_border);
     CHECK(command.settings.corner == PIP_CORNER_TOP_LEFT);
     CHECK(command.settings.scale == 0.3);
     CHECK(command.settings.opacity == 0.8);
@@ -44,6 +45,7 @@ static void test_rejects(void)
         "show appid=12x", "show appid=1 corner=middle", "show appid=1 scale=0.9",
         "show appid=1 scale=nan", "show appid=1 opacity=0.1", "show appid=1 fps=0",
         "show appid=1 fps=61", "show appid=1 colour=red", "show appid=1 corner",
+        "show appid=1 border=21", "show appid=1 border=-1",
         "show appid=1 =x", "set appid=5", "hide now", "quit 1",
     };
     for (size_t index = 0; index < sizeof(bad) / sizeof(bad[0]); index++) {

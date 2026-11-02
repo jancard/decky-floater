@@ -19,6 +19,7 @@ interface Settings {
   scale: number;
   opacity: number;
   fps: number;
+  border: number;
   pause_hyperhdr: boolean;
 }
 
@@ -75,6 +76,9 @@ const message = (failure: unknown) => (failure instanceof Error ? failure.messag
 const appName = (appid: number) =>
   window.appStore?.GetAppOverviewByAppID(appid)?.display_name || `App ${appid}`;
 
+// The panel re-mounts when the dropdown's menu closes, so keep the choice outside React state.
+let lastSelected: number | null = null;
+
 // Sends only the latest value while a call is in flight, so sliders don't queue up backend calls.
 function useLatest<T>(send: (value: T) => Promise<unknown>, onError: (text: string) => void) {
   const pending = useRef<T | null>(null);
@@ -122,7 +126,8 @@ function Content() {
         setApps(running);
         const candidates = running.running.filter((appid) => appid !== STEAM_APPID);
         const preferred = running.focused && running.focused !== STEAM_APPID ? running.focused : candidates[0];
-        setSelected(current.active && current.appid ? current.appid : preferred ?? null);
+        const remembered = lastSelected !== null && candidates.includes(lastSelected) ? lastSelected : null;
+        setSelected(current.active && current.appid ? current.appid : remembered ?? preferred ?? null);
       } catch (failure) {
         if (mounted.current) setError(message(failure));
       }
@@ -191,6 +196,7 @@ function Content() {
   const status = error ?? stopNote ?? (
     !state ? "Loading..."
     : state.active ? (state.visible ? "Showing" : "Hidden while the app is in front")
+      + (state.paused_hyperhdr ? " · HyperHDR paused until closed" : "")
     : candidates.length === 0 ? "Start an app, then come back here"
     : undefined
   );
@@ -214,7 +220,10 @@ function Content() {
                 disabled={busy || candidates.length === 0}
                 rgOptions={candidates.map((appid) => ({ data: appid, label: appName(appid) }))}
                 selectedOption={selected}
-                onChange={(option) => setSelected(option.data as number)}
+                onChange={(option) => {
+                  lastSelected = option.data as number;
+                  setSelected(lastSelected);
+                }}
               />
             </PanelSectionRow>
             <PanelSectionRow>
@@ -294,19 +303,27 @@ function Content() {
             />
           </PanelSectionRow>
           <PanelSectionRow>
+            <SliderField
+              label="Border"
+              value={settings.border}
+              min={0}
+              max={10}
+              step={1}
+              resetValue={0}
+              showValue
+              valueSuffix=" px"
+              onChange={(value) => {
+                setState({ ...state!, settings: { ...settings, border: value } });
+                void changeSettings({ border: value });
+              }}
+            />
+          </PanelSectionRow>
+          <PanelSectionRow>
             <ToggleField
               label="Smooth video (60 FPS)"
               description="Uses more GPU time while a game runs"
               checked={settings.fps >= 60}
               onChange={(smooth) => void changeSettings({ fps: smooth ? 60 : 30 })}
-            />
-          </PanelSectionRow>
-          <PanelSectionRow>
-            <ToggleField
-              label="Pause HyperHDR while showing"
-              description={state?.paused_hyperhdr ? "HyperHDR is paused" : "Resumes when Picture in Picture closes"}
-              checked={settings.pause_hyperhdr}
-              onChange={(pause) => void changeSettings({ pause_hyperhdr: pause })}
             />
           </PanelSectionRow>
         </PanelSection>

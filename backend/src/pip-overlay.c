@@ -40,6 +40,10 @@
 #define STATS_TICKS 5
 #define SOURCE_GONE_TICKS 2
 #define HIDDEN_FPS 2
+/* Steam's Quick Access Menu separator colour, #23262E. */
+#define BORDER_RED 0x2323
+#define BORDER_GREEN 0x2626
+#define BORDER_BLUE 0x2e2e
 
 enum capture_state { CAPTURE_OFF, CAPTURE_ON, CAPTURE_DRAINING };
 enum after_drain { AFTER_NONE, AFTER_RESTART, AFTER_QUIT };
@@ -127,6 +131,7 @@ struct helper {
     struct mirror mango;
     struct frame frame;
     struct pip_rect rect;
+    struct pip_rect drawn;
     bool pip_drawn;
     uint32_t focused_appid;
 };
@@ -240,11 +245,20 @@ static bool pip_visible(const struct helper *helper)
     return helper->active && helper->frame.image != NULL && helper->focused_appid != helper->appid;
 }
 
+static struct pip_rect outer_rect(const struct helper *helper)
+{
+    int border = (int)lround(helper->settings.border * helper->screen.height / 1080.0);
+    return (struct pip_rect){
+        helper->rect.x - border, helper->rect.y - border,
+        helper->rect.width + 2u * (unsigned int)border, helper->rect.height + 2u * (unsigned int)border,
+    };
+}
+
 static void update_pip_region(struct helper *helper)
 {
+    struct pip_rect outer = outer_rect(helper);
     XRectangle rect = {
-        (short)helper->rect.x, (short)helper->rect.y,
-        (unsigned short)helper->rect.width, (unsigned short)helper->rect.height,
+        (short)outer.x, (short)outer.y, (unsigned short)outer.width, (unsigned short)outer.height,
     };
     XFixesSetRegion(helper->display, helper->pip_region, &rect, pip_visible(helper) ? 1 : 0);
 }
@@ -257,35 +271,48 @@ static void set_opacity(struct helper *helper)
     helper->opacity_mask = XRenderCreateSolidFill(helper->display, &alpha);
 }
 
+static void clear_drawn(struct helper *helper)
+{
+    if (!helper->pip_drawn)
+        return;
+    clear_rect(helper, helper->drawn.x, helper->drawn.y, helper->drawn.width, helper->drawn.height);
+    helper->pip_drawn = false;
+    helper->mango_full_repaint = true;
+}
+
 static void draw_pip(struct helper *helper)
 {
     struct pip_rect *rect = &helper->rect;
     if (!pip_visible(helper)) {
-        if (helper->pip_drawn) {
-            clear_rect(helper, rect->x, rect->y, rect->width, rect->height);
-            helper->pip_drawn = false;
-            helper->mango_full_repaint = true;
-        }
+        clear_drawn(helper);
         return;
+    }
+    struct pip_rect outer = outer_rect(helper);
+    unsigned short alpha = (unsigned short)(helper->settings.opacity * 0xffff);
+    if (outer.width != rect->width) {
+        XRenderColor border = {
+            (unsigned short)(BORDER_RED * helper->settings.opacity),
+            (unsigned short)(BORDER_GREEN * helper->settings.opacity),
+            (unsigned short)(BORDER_BLUE * helper->settings.opacity), alpha,
+        };
+        XRenderFillRectangle(helper->display, PictOpSrc, helper->picture, &border,
+            outer.x, outer.y, outer.width, outer.height);
     }
     if (helper->frame.has_content) {
         XRenderComposite(helper->display, PictOpSrc, helper->frame.picture, helper->opacity_mask,
             helper->picture, 0, 0, 0, 0, rect->x, rect->y, rect->width, rect->height);
     } else {
-        XRenderColor black = { .alpha = (unsigned short)(helper->settings.opacity * 0xffff) };
+        XRenderColor black = { .alpha = alpha };
         XRenderFillRectangle(helper->display, PictOpSrc, helper->picture, &black,
             rect->x, rect->y, rect->width, rect->height);
     }
+    helper->drawn = outer;
     helper->pip_drawn = true;
 }
 
 static void relayout(struct helper *helper)
 {
-    if (helper->pip_drawn) {
-        clear_rect(helper, helper->rect.x, helper->rect.y, helper->rect.width, helper->rect.height);
-        helper->pip_drawn = false;
-        helper->mango_full_repaint = true;
-    }
+    clear_drawn(helper);
     helper->rect = pip_place(helper->screen, helper->frame.size, helper->settings.corner);
     update_pip_region(helper);
     draw_pip(helper);
@@ -360,12 +387,18 @@ static void map_window(struct helper *helper, bool mapped)
     if (helper->window_mapped == mapped)
         return;
     helper->window_mapped = mapped;
+    // Gamescope keeps painting an unmapped window that still claims the external overlay slot.
+    unsigned long enabled = mapped ? 1 : 0;
     if (mapped) {
+        XChangeProperty(helper->display, helper->window, helper->overlay_atom, XA_CARDINAL, 32,
+            PropModeReplace, (unsigned char *)&enabled, 1);
         XMapRaised(helper->display, helper->window);
     } else {
-        XUnmapWindow(helper->display, helper->window);
         clear_rect(helper, 0, 0, helper->screen.width, helper->screen.height);
         helper->pip_drawn = false;
+        XChangeProperty(helper->display, helper->window, helper->overlay_atom, XA_CARDINAL, 32,
+            PropModeReplace, (unsigned char *)&enabled, 1);
+        XUnmapWindow(helper->display, helper->window);
     }
 }
 
@@ -1190,7 +1223,7 @@ static bool setup_x11(struct helper *helper)
     XStoreName(display, helper->window, "Floater Picture in Picture");
     XWMHints hints = { .flags = InputHint, .input = False };
     XSetWMHints(display, helper->window, &hints);
-    unsigned long enabled = 1;
+    unsigned long enabled = 0;
     XChangeProperty(display, helper->window, helper->overlay_atom, XA_CARDINAL, 32,
         PropModeReplace, (unsigned char *)&enabled, 1);
     XShapeCombineRectangles(display, helper->window, ShapeInput, 0, 0, NULL, 0, ShapeSet, Unsorted);

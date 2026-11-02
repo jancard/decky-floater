@@ -59,20 +59,21 @@ class FakeHelper:
 class PureFunctionTests(unittest.TestCase):
     def test_validate_settings_accepts_valid_values(self):
         self.assertEqual(validate_settings({"corner": "top-left", "scale": 0.3, "opacity": 1,
-                                            "fps": 60, "pause_hyperhdr": False}),
-                         {"corner": "top-left", "scale": 0.3, "opacity": 1.0, "fps": 60,
+                                            "fps": 60, "border": 3, "pause_hyperhdr": False}),
+                         {"corner": "top-left", "scale": 0.3, "opacity": 1.0, "fps": 60, "border": 3,
                           "pause_hyperhdr": False})
 
     def test_validate_settings_rejects_invalid_values(self):
         for bad in ({"corner": "middle"}, {"scale": 0.9}, {"scale": "0.3"}, {"opacity": 0.1},
                     {"fps": 0}, {"fps": 30.0}, {"fps": True}, {"pause_hyperhdr": 1},
+                    {"border": 21}, {"border": -1}, {"border": 2.5},
                     {"colour": "red"}, ["corner"], None):
             with self.assertRaises(ValueError, msg=repr(bad)):
                 validate_settings(bad)
 
     def test_settings_arguments(self):
         self.assertEqual(settings_arguments(DEFAULT_SETTINGS),
-                         "corner=bottom-right scale=0.250 opacity=1.000 fps=30")
+                         "corner=bottom-right scale=0.250 opacity=1.000 fps=30 border=0")
 
     def test_appid_from_cgroup(self):
         with tempfile.TemporaryDirectory() as proc:
@@ -172,7 +173,7 @@ class PluginTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(state["active"])
         self.assertEqual(state["appid"], 42)
         self.assertEqual(self.plugin._helper.commands,
-                         ["show appid=42 corner=bottom-right scale=0.250 opacity=1.000 fps=30"])
+                         ["show appid=42 corner=bottom-right scale=0.250 opacity=1.000 fps=30 border=0"])
         self.assertEqual(self.systemctl, [])
         decky.emit.assert_awaited()
 
@@ -227,7 +228,7 @@ class PluginTests(unittest.IsolatedAsyncioTestCase):
         self.plugin._state.update(active=True, appid=42)
         await self.plugin.start(42)
         self.assertEqual(self.plugin._helper.commands,
-                         ["set corner=bottom-right scale=0.250 opacity=1.000 fps=30"])
+                         ["set corner=bottom-right scale=0.250 opacity=1.000 fps=30 border=0"])
 
     async def test_rejects_invalid_appids(self):
         for appid in (0, -1, 2**32, "42", 4.2, True, None):

@@ -93,6 +93,11 @@ static int parse_pair(char *token, struct pip_command *command, char *error, siz
             return fail(error, error_size, "fps must be %u-%u", PIP_FPS_MIN, PIP_FPS_MAX);
         command->settings.fps = (unsigned int)number;
         command->has_fps = true;
+    } else if (strcmp(key, "border") == 0) {
+        if (parse_unsigned(value, PIP_BORDER_MAX, &number) < 0)
+            return fail(error, error_size, "border must be 0-%u", PIP_BORDER_MAX);
+        command->settings.border = (unsigned int)number;
+        command->has_border = true;
     } else {
         return fail(error, error_size, "unknown key '%s'", key);
     }
@@ -152,4 +157,6 @@ void pip_apply_settings(struct pip_settings *settings, const struct pip_command 
         settings->opacity = command->settings.opacity;
     if (command->has_fps)
         settings->fps = command->settings.fps;
+    if (command->has_border)
+        settings->border = command->settings.border;
 }

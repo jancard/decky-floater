@@ -15,6 +15,7 @@ DEFAULT_SETTINGS = {
     "scale": 0.25,
     "opacity": 1.0,
     "fps": 30,
+    "border": 0,
     "pause_hyperhdr": True,
 }
 MAX_APPID = 2**32 - 1
@@ -48,6 +49,9 @@ def validate_settings(changes):
         elif key == "fps":
             if type(value) is not int or not 1 <= value <= 60:
                 raise ValueError("fps must be an integer between 1 and 60")
+        elif key == "border":
+            if type(value) is not int or not 0 <= value <= 20:
+                raise ValueError("border must be an integer between 0 and 20")
         elif key == "pause_hyperhdr":
             if type(value) is not bool:
                 raise ValueError("pause_hyperhdr must be a boolean")
@@ -57,7 +61,7 @@ def validate_settings(changes):
 
 def settings_arguments(settings):
     return (f"corner={settings['corner']} scale={settings['scale']:.3f} "
-            f"opacity={settings['opacity']:.3f} fps={settings['fps']}")
+            f"opacity={settings['opacity']:.3f} fps={settings['fps']} border={settings['border']}")
 
 
 def appid_for_pid(pid, proc="/proc"):
@@ -391,7 +395,7 @@ class Plugin:
         async with self._lock:
             self._settings.update(checked)
             self._save_settings()
-            helper_keys = {key: checked[key] for key in ("corner", "scale", "opacity", "fps")
+            helper_keys = {key: checked[key] for key in ("corner", "scale", "opacity", "fps", "border")
                            if key in checked}
             if helper_keys and self._state["active"] and self._helper is not None:
                 pairs = " ".join(f"{key}={value:.3f}" if isinstance(value, float) else f"{key}={value}"
