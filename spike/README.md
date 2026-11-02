@@ -85,6 +85,18 @@ Status: Phase 0 complete, NO-GO for the current capture/overlay architecture (20
 
 - Conclusion: capture cost scales with captured frames per second; at 30 FPS the total cost is ~1-2 game FPS, matching the overlay-only cost (46 FPS). Default to 30 FPS with a user setting for 60.
 
+## Controller Input Leak
+
+- 2026-11-02: pressing A sometimes paused the YouTube TV video while it was the Picture in Picture source. Both its Firefox gamepad bridge and its mpv (`input-gamepad=yes`) hold `/dev/input/event22`, Steam's single shared virtual pad `Microsoft X-Box 360 pad 0`, and act on it regardless of window focus.
+- An event logger on that device (A pressed in each place): Steam Library and QAM sent nothing to the pad (Steam consumes input); with Cyberpunk or YouTube TV in front every press reached the pad. The user saw the video pause only in those two cases. So any background app that reads the virtual pad receives the focused game's controller input.
+- Grabbing the device (`EVIOCGRAB`) would also starve the focused game, which reads the same pad. There is no general non-root way to route the pad by focus; apps must ignore the pad when they are not focused (e.g. check `GAMESCOPE_FOCUSED_APP`), which is fixable for the HTPC's own YouTube TV/Plezy wrappers but not for arbitrary apps.
+
+## Steam Game Recording
+
+- Steam Game Recording is another consumer of the same Gamescope PipeWire node (`CDesktopCapturePipeWire`, node `steam`). On its own it sets `focus_appid` to the game and negotiates 3840x2160 NV12 MemFd (no DMA-BUF), then encodes with VAAPI H264; the user saw a heavy FPS hit from recording alone.
+- With the prototype running first (30 FPS throttle, HyperHDR stopped), a manual recording joined the already negotiated 640x360 BGRx YouTube TV format instead of the game, and the held buffers starved it. After 33 s Steam logged `Driver deadlock in hardware accelerated desktop capture, aborting` and `Fatal assert; application exiting`; the Steam UI died and Cyberpunk exited. Gamescope survived; killing the stale Steam main process restored the session. Evidence: HTPC `~/Downloads/floater-prototype-2026-11-02/steam-recording-crash.journal`.
+- Consequences: Picture in Picture and Steam recording are mutually exclusive. Holding buffers starves every consumer of the node, so throttling is only safe as the sole consumer. The plugin must refuse to start while another consumer is linked to the `gamescope` node (covers "Record in background", HyperHDR, Remote Play) and stop immediately when one appears.
+
 ## Decision Gate
 
 Test platform: HTPC with Intel Arc B580, Gamescope 3.16.25, and Xwayland displays `:0`/`:1`.
