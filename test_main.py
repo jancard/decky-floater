@@ -73,7 +73,7 @@ class PureFunctionTests(unittest.TestCase):
 
     def test_settings_arguments(self):
         self.assertEqual(settings_arguments(DEFAULT_SETTINGS),
-                         "corner=bottom-right scale=0.250 opacity=1.000 fps=30 border=0")
+                         "corner=bottom-left scale=0.250 opacity=1.000 fps=30 border=1")
 
     def test_appid_from_cgroup(self):
         with tempfile.TemporaryDirectory() as proc:
@@ -173,7 +173,7 @@ class PluginTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(state["active"])
         self.assertEqual(state["appid"], 42)
         self.assertEqual(self.plugin._helper.commands,
-                         ["show appid=42 corner=bottom-right scale=0.250 opacity=1.000 fps=30 border=0"])
+                         ["show appid=42 corner=bottom-left scale=0.250 opacity=1.000 fps=30 border=1"])
         self.assertEqual(self.systemctl, [])
         decky.emit.assert_awaited()
 
@@ -228,7 +228,7 @@ class PluginTests(unittest.IsolatedAsyncioTestCase):
         self.plugin._state.update(active=True, appid=42)
         await self.plugin.start(42)
         self.assertEqual(self.plugin._helper.commands,
-                         ["set corner=bottom-right scale=0.250 opacity=1.000 fps=30 border=0"])
+                         ["set corner=bottom-left scale=0.250 opacity=1.000 fps=30 border=1"])
 
     async def test_rejects_invalid_appids(self):
         for appid in (0, -1, 2**32, "42", 4.2, True, None):
@@ -289,7 +289,7 @@ class PluginTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(self.plugin._muted_appid)
 
     async def test_volume_validation_and_missing_audio(self):
-        for volume in (-1, 151, 50.5, "50", None, True):
+        for volume in (-1, 131, 50.5, "50", None, True):
             with self.assertRaises(ValueError):
                 await self.plugin.set_volume(42, volume)
         with self.assertRaises(ValueError):

@@ -11,11 +11,11 @@ HELPER_NAME = "pip-overlay"
 HYPERHDR_UNIT = "hyperhdr.service"
 CORNERS = ("top-left", "top-right", "bottom-left", "bottom-right")
 DEFAULT_SETTINGS = {
-    "corner": "bottom-right",
+    "corner": "bottom-left",
     "scale": 0.25,
     "opacity": 1.0,
     "fps": 30,
-    "border": 0,
+    "border": 1,
     "pause_hyperhdr": True,
 }
 MAX_APPID = 2**32 - 1
@@ -415,8 +415,8 @@ class Plugin:
 
     async def set_volume(self, appid, volume):
         _validate_appid(appid)
-        if type(volume) is not int or not 0 <= volume <= 150:
-            raise ValueError("volume must be an integer between 0 and 150")
+        if type(volume) is not int or not 0 <= volume <= 130:
+            raise ValueError("volume must be an integer between 0 and 130")
         nodes = await self._app_audio_nodes(appid)
         for node in nodes:
             await self._run("/usr/bin/wpctl", "set-volume", str(node), f"{volume / 100:.2f}")

@@ -68,10 +68,10 @@ static void test_set_and_apply(void)
     struct pip_command command;
     char error[128];
     struct pip_settings settings = pip_default_settings;
-    CHECK(parse("set corner=bottom-left fps=15", &command, error) == 0);
+    CHECK(parse("set corner=top-right fps=15", &command, error) == 0);
     CHECK(command.verb == PIP_VERB_SET);
     pip_apply_settings(&settings, &command);
-    CHECK(settings.corner == PIP_CORNER_BOTTOM_LEFT);
+    CHECK(settings.corner == PIP_CORNER_TOP_RIGHT);
     CHECK(settings.fps == 15);
     CHECK(settings.scale == pip_default_settings.scale);
     CHECK(settings.opacity == pip_default_settings.opacity);

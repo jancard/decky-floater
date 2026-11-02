@@ -49,11 +49,11 @@ struct pip_command {
 #define PIP_MAX_LINE 512
 
 static const struct pip_settings pip_default_settings = {
-    .corner = PIP_CORNER_BOTTOM_RIGHT,
+    .corner = PIP_CORNER_BOTTOM_LEFT,
     .scale = 0.25,
     .opacity = 1.0,
     .fps = 30,
-    .border = 0,
+    .border = 1,
 };
 
 /*

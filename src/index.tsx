@@ -245,9 +245,9 @@ function Content() {
             <SliderField
               label="Volume"
               description={audioError ?? undefined}
-              value={audio?.volume ?? 100}
+              value={Math.min(audio?.volume ?? 100, 130)}
               min={0}
-              max={150}
+              max={130}
               step={5}
               minimumDpadGranularity={5}
               resetValue={100}
