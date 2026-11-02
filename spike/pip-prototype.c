@@ -30,6 +30,7 @@
 #define PIP_BORDER 4
 #define MANGOAPP_TITLE "mangoapp overlay window"
 #define REPORT_SECONDS 5
+#define MAX_HELD_BUFFERS 16
 
 static unsigned long ignored_x_errors;
 
@@ -79,6 +80,10 @@ struct prototype {
     struct spa_source *x11_source;
     struct spa_source *tick_timer;
     struct spa_source *stop_timer;
+    struct spa_source *release_timer;
+    struct pw_buffer *held[MAX_HELD_BUFFERS];
+    unsigned int held_count;
+    unsigned int max_fps;
     struct spa_video_info_raw format;
     int stopping;
     int failed;
@@ -593,14 +598,33 @@ static void present_buffer(struct prototype *proto, struct spa_buffer *buffer)
         proto->stats.present_max_us = elapsed_us;
 }
 
+static void release_held(struct prototype *proto, unsigned int count)
+{
+    while (count-- > 0 && proto->held_count > 0) {
+        pw_stream_queue_buffer(proto->stream, proto->held[0]);
+        proto->held_count--;
+        memmove(proto->held, proto->held + 1, proto->held_count * sizeof(proto->held[0]));
+    }
+}
+
+static void on_release_timer(void *userdata, uint64_t expirations)
+{
+    (void)expirations;
+    release_held(userdata, 1);
+}
+
 static void on_process(void *userdata)
 {
     struct prototype *proto = userdata;
     struct pw_buffer *latest = NULL;
     struct pw_buffer *available;
     while ((available = pw_stream_dequeue_buffer(proto->stream)) != NULL) {
-        if (latest != NULL)
-            pw_stream_queue_buffer(proto->stream, latest);
+        if (latest != NULL) {
+            if (proto->max_fps > 0 && !proto->stopping && proto->held_count < MAX_HELD_BUFFERS)
+                proto->held[proto->held_count++] = latest;
+            else
+                pw_stream_queue_buffer(proto->stream, latest);
+        }
         latest = available;
     }
     if (latest == NULL)
@@ -617,7 +641,12 @@ static void on_process(void *userdata)
         proto->stats.buffers++;
         present_buffer(proto, latest->buffer);
     }
-    pw_stream_queue_buffer(proto->stream, latest);
+    if (proto->max_fps > 0 && !proto->stopping && proto->held_count < MAX_HELD_BUFFERS) {
+        // Gamescope only renders a capture when it can dequeue a free buffer, so returning them at max_fps throttles it.
+        proto->held[proto->held_count++] = latest;
+    } else {
+        pw_stream_queue_buffer(proto->stream, latest);
+    }
     process_x_events(proto);
 }
 
@@ -698,6 +727,7 @@ static void begin_stop(struct prototype *proto, const char *reason)
         return;
     }
     fprintf(stderr, "Stopping (%s); draining PipeWire for 500 ms\n", reason);
+    release_held(proto, MAX_HELD_BUFFERS);
     pw_stream_set_active(proto->stream, false);
     struct timespec drain = { .tv_sec = 0, .tv_nsec = 500000000 };
     pw_loop_update_timer(pw_main_loop_get_loop(proto->loop), proto->stop_timer,
@@ -894,6 +924,13 @@ int main(int argc, char **argv)
         on_x11_readable, &proto);
     proto.tick_timer = pw_loop_add_timer(loop, on_tick, &proto);
     proto.stop_timer = pw_loop_add_timer(loop, on_stop_timer, &proto);
+    proto.release_timer = pw_loop_add_timer(loop, on_release_timer, &proto);
+    const char *max_fps = getenv("FLOATER_MAX_FPS");
+    if (max_fps != NULL && sscanf(max_fps, "%u", &proto.max_fps) == 1 && proto.max_fps > 0) {
+        struct timespec interval = { .tv_nsec = 1000000000L / proto.max_fps };
+        pw_loop_update_timer(loop, proto.release_timer, &interval, &interval, false);
+        fprintf(stderr, "Capture throttled to %u fps\n", proto.max_fps);
+    }
     pw_loop_add_signal(loop, SIGINT, on_signal, &proto);
     pw_loop_add_signal(loop, SIGTERM, on_signal, &proto);
     struct timespec second = { .tv_sec = 1 };
@@ -924,6 +961,7 @@ int main(int argc, char **argv)
     pw_loop_destroy_source(loop, proto.x11_source);
     pw_loop_destroy_source(loop, proto.tick_timer);
     pw_loop_destroy_source(loop, proto.stop_timer);
+    pw_loop_destroy_source(loop, proto.release_timer);
     pw_main_loop_destroy(proto.loop);
     pw_deinit();
 
