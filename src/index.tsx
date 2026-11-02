@@ -125,7 +125,8 @@ function Content() {
         setState(current);
         setApps(running);
         const candidates = running.running.filter((appid) => appid !== STEAM_APPID);
-        const preferred = running.focused && running.focused !== STEAM_APPID ? running.focused : candidates[0];
+        const front = window.SteamUIStore?.MainRunningAppID ?? running.focused;
+        const preferred = front && candidates.includes(front) ? front : candidates[0];
         const remembered = lastSelected !== null && candidates.includes(lastSelected) ? lastSelected : null;
         setSelected(current.active && current.appid ? current.appid : remembered ?? preferred ?? null);
       } catch (failure) {
@@ -153,12 +154,15 @@ function Content() {
     if (busy) return;
     setBusy(true);
     setError(null);
+    // Gamescope reports Steam as focused while the QAM is open; Steam knows which app is behind it.
+    const front = window.SteamUIStore?.MainRunningAppID;
     try {
       const next = await action();
       if (!mounted.current) return;
       setState(next);
       // The box stays hidden while its app is in front, so only then switch to the Library.
-      if (leaveAppid !== null && (await getApps()).focused === leaveAppid) {
+      const inFront = front !== undefined ? front === leaveAppid : (await getApps()).focused === leaveAppid;
+      if (leaveAppid !== null && inFront) {
         Navigation.Navigate("/library/home");
         Navigation.CloseSideMenus();
       }
