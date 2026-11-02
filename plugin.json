@@ -1,0 +1,10 @@
+{
+  "name": "Floater",
+  "author": "JJ",
+  "flags": [],
+  "api_version": 1,
+  "publish": {
+    "tags": ["utility", "video"],
+    "description": "Picture in Picture for Game Mode: keep a video or app playing in a corner while you use another app."
+  }
+}
