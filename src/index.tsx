@@ -149,7 +149,7 @@ function Content() {
       .catch((failure) => mounted.current && setAudioError(message(failure)));
   }, [pipAppid]);
 
-  const run = async (action: () => Promise<State>, navigateAway: boolean) => {
+  const run = async (action: () => Promise<State>, leaveAppid: number | null) => {
     if (busy) return;
     setBusy(true);
     setError(null);
@@ -157,8 +157,8 @@ function Content() {
       const next = await action();
       if (!mounted.current) return;
       setState(next);
-      if (navigateAway) {
-        // The app being shown can't be in front, so go to the Library where it becomes visible.
+      // The box stays hidden while its app is in front, so only then switch to the Library.
+      if (leaveAppid !== null && (await getApps()).focused === leaveAppid) {
         Navigation.Navigate("/library/home");
         Navigation.CloseSideMenus();
       }
@@ -207,7 +207,7 @@ function Content() {
         {state?.active && pipAppid !== null ? (
           <PanelSectionRow>
             <ButtonItem layout="below" description={status} disabled={busy}
-              onClick={() => void run(() => stopPip(), false)}>
+              onClick={() => void run(() => stopPip(), null)}>
               Close Picture in Picture ({appName(pipAppid)})
             </ButtonItem>
           </PanelSectionRow>
@@ -228,7 +228,7 @@ function Content() {
             </PanelSectionRow>
             <PanelSectionRow>
               <ButtonItem layout="below" description={status} disabled={busy || selected === null}
-                onClick={() => selected !== null && void run(() => startPip(selected), true)}>
+                onClick={() => selected !== null && void run(() => startPip(selected), selected)}>
                 {busy ? "Starting..." : "Start Picture in Picture"}
               </ButtonItem>
             </PanelSectionRow>

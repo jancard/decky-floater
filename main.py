@@ -235,6 +235,7 @@ class Plugin:
         self._settings = self._load_settings()
         self._helper = None
         self._paused_hyperhdr = False
+        self._muted_appid = None
         self._state = {"active": False, "appid": None, "visible": False, "streaming": False,
                        "reason": None, "stats": None}
 
@@ -322,6 +323,7 @@ class Plugin:
                                reason=reason)
             if was_active and reason not in ("hidden", "quit"):
                 asyncio.create_task(self._restore_hyperhdr())
+                asyncio.create_task(self._restore_audio())
         elif kind == "error":
             decky.logger.error("helper error: %s", event.get("message"))
             return
@@ -387,6 +389,7 @@ class Plugin:
                 await self._helper.request("hide", {"stopped"})
             self._state.update(active=False, visible=False, streaming=False, stats=None)
             await self._restore_hyperhdr()
+            await self._restore_audio()
             await self._emit_state()
             return self.get_state_sync()
 
@@ -426,7 +429,18 @@ class Plugin:
         nodes = await self._app_audio_nodes(appid)
         for node in nodes:
             await self._run("/usr/bin/wpctl", "set-mute", str(node), "1" if muted else "0")
+        self._muted_appid = appid if muted else None
         return {"streams": len(nodes), "muted": muted}
+
+    async def _restore_audio(self):
+        """Mute is only reachable from the Picture in Picture panel, so undo it when that closes."""
+        appid, self._muted_appid = self._muted_appid, None
+        if appid is None:
+            return
+        try:
+            await self.set_muted(appid, False)
+        except (RuntimeError, ValueError) as error:
+            decky.logger.info("could not unmute %s: %s", appid, error)
 
     async def get_audio(self, appid):
         _validate_appid(appid)
@@ -441,3 +455,4 @@ class Plugin:
         if self._helper is not None:
             await self._helper.stop()
         await self._restore_hyperhdr()
+        await self._restore_audio()

@@ -272,6 +272,22 @@ class PluginTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn(("/usr/bin/wpctl", "set-volume", "80", "0.80"), calls)
         self.assertIn(("/usr/bin/wpctl", "set-mute", "80", "1"), calls)
 
+    async def test_close_unmutes_app_muted_by_floater(self):
+        calls = []
+
+        async def run(*command, timeout=10):
+            calls.append(command)
+            return "[]"
+
+        self.plugin._run = run
+        self.plugin._helper = FakeHelper([{"event": "stopped", "reason": "hidden"}])
+        self.plugin._state.update(active=True, appid=42)
+        with patch.object(main, "audio_nodes_for_app", return_value=[73]):
+            await self.plugin.set_muted(42, True)
+            await self.plugin.stop()
+        self.assertEqual(calls[-1], ("/usr/bin/wpctl", "set-mute", "73", "0"))
+        self.assertIsNone(self.plugin._muted_appid)
+
     async def test_volume_validation_and_missing_audio(self):
         for volume in (-1, 151, 50.5, "50", None, True):
             with self.assertRaises(ValueError):
