@@ -230,6 +230,18 @@ class PluginTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.plugin._helper.commands,
                          ["set corner=bottom-left scale=0.250 opacity=1.000 fps=30 border=1"])
 
+    async def test_switching_app_restores_audio_and_shows_new_app(self):
+        self.plugin._helper = FakeHelper([{"event": "starting", "appid": 7}])
+        self.plugin._state.update(active=True, appid=42)
+        self.plugin._muted_appid = 42
+        self.plugin.set_muted = AsyncMock()
+        state = await self.plugin.start(7)
+        self.plugin.set_muted.assert_awaited_once_with(42, False)
+        self.assertEqual(state["appid"], 7)
+        self.assertTrue(state["active"])
+        self.assertEqual(self.plugin._helper.commands,
+                         ["show appid=7 corner=bottom-left scale=0.250 opacity=1.000 fps=30 border=1"])
+
     async def test_rejects_invalid_appids(self):
         for appid in (0, -1, 2**32, "42", 4.2, True, None):
             with self.assertRaises(ValueError):

@@ -158,9 +158,9 @@ function Content() {
     const front = window.SteamUIStore?.MainRunningAppID;
     try {
       const next = await action();
-      if (!mounted.current) return;
-      setState(next);
+      if (mounted.current) setState(next);
       // The box stays hidden while its app is in front, so only then switch to the Library.
+      // Choosing from the dropdown remounts the panel, so this must not depend on `mounted`.
       const inFront = front !== undefined ? front === leaveAppid : (await getApps()).focused === leaveAppid;
       if (leaveAppid !== null && inFront) {
         Navigation.Navigate("/library/home");
@@ -197,8 +197,14 @@ function Content() {
   const settings = state?.settings;
   const candidates = (apps?.running ?? []).filter((appid) => appid !== STEAM_APPID);
   const stopNote = !state?.active && state?.reason ? STOP_REASONS[state.reason] : undefined;
+  const choose = (appid: number) => {
+    lastSelected = appid;
+    setSelected(appid);
+    if (state?.active && appid !== state.appid) void run(() => startPip(appid), appid);
+  };
   const status = error ?? stopNote ?? (
     !state ? "Loading..."
+    : busy && state.active ? "Switching..."
     : state.active ? (state.visible ? "Showing" : "Hidden while the app is in front")
       + (state.paused_hyperhdr ? " · HyperHDR paused until closed" : "")
     : candidates.length === 0 ? "Start an app, then come back here"
@@ -208,36 +214,30 @@ function Content() {
   return (
     <>
       <PanelSection title="Picture in Picture">
-        {state?.active && pipAppid !== null ? (
-          <PanelSectionRow>
+        <PanelSectionRow>
+          <DropdownItem
+            label="App"
+            layout="below"
+            menuLabel="Picture in Picture app"
+            disabled={busy || candidates.length === 0}
+            rgOptions={candidates.map((appid) => ({ data: appid, label: appName(appid) }))}
+            selectedOption={pipAppid ?? selected}
+            onChange={(option) => choose(option.data as number)}
+          />
+        </PanelSectionRow>
+        <PanelSectionRow>
+          {state?.active ? (
             <ButtonItem layout="below" description={status} disabled={busy}
               onClick={() => void run(() => stopPip(), null)}>
-              Close Picture in Picture ({appName(pipAppid)})
+              Close Picture in Picture
             </ButtonItem>
-          </PanelSectionRow>
-        ) : (
-          <>
-            <PanelSectionRow>
-              <DropdownItem
-                label="App"
-                menuLabel="Picture in Picture app"
-                disabled={busy || candidates.length === 0}
-                rgOptions={candidates.map((appid) => ({ data: appid, label: appName(appid) }))}
-                selectedOption={selected}
-                onChange={(option) => {
-                  lastSelected = option.data as number;
-                  setSelected(lastSelected);
-                }}
-              />
-            </PanelSectionRow>
-            <PanelSectionRow>
-              <ButtonItem layout="below" description={status} disabled={busy || selected === null}
-                onClick={() => selected !== null && void run(() => startPip(selected), selected)}>
-                {busy ? "Starting..." : "Start Picture in Picture"}
-              </ButtonItem>
-            </PanelSectionRow>
-          </>
-        )}
+          ) : (
+            <ButtonItem layout="below" description={status} disabled={busy || selected === null}
+              onClick={() => selected !== null && void run(() => startPip(selected), selected)}>
+              {busy ? "Starting..." : "Start Picture in Picture"}
+            </ButtonItem>
+          )}
+        </PanelSectionRow>
       </PanelSection>
       {state?.active && (
         <PanelSection title="Picture in Picture audio">

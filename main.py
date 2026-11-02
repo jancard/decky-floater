@@ -357,6 +357,8 @@ class Plugin:
             if self._state["active"] and self._state["appid"] == appid:
                 await self._helper.send(f"set {settings_arguments(self._settings)}")
                 return self.get_state_sync()
+            if self._state["active"]:
+                await self._restore_audio()
             command = f"show appid={appid} {settings_arguments(self._settings)}"
             for attempt in range(BUSY_RETRIES + 1):
                 event = await self._helper.request(command, {"starting", "stopped"})
