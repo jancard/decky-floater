@@ -79,6 +79,8 @@ struct helper {
     struct spa_hook registry_listener;
     bool registry_ready;
     int sync_seq;
+    int restart_seq;
+    bool restart_pending;
     uint32_t gamescope_node;
     struct link links[MAX_LINKS];
     size_t link_count;
@@ -639,8 +641,11 @@ static bool foreign_consumer(struct helper *helper)
         return false;
     for (size_t index = 0; index < helper->link_count; index++) {
         const struct link *link = &helper->links[index];
-        if (link->output_node == helper->gamescope_node && link->input_node != own)
+        if (link->output_node == helper->gamescope_node && link->input_node != own) {
+            fprintf(stderr, "pip-overlay: link %u from the Gamescope node to node %u (own %u)\n",
+                link->id, link->input_node, own);
             return true;
+        }
     }
     return false;
 }
@@ -689,11 +694,22 @@ static const struct pw_registry_events registry_events = {
     .global_remove = on_registry_global_remove,
 };
 
+static void start_capture(struct helper *helper);
+
 static void on_core_done(void *userdata, uint32_t id, int seq)
 {
     struct helper *helper = userdata;
-    if (id == PW_ID_CORE && seq == helper->sync_seq)
+    if (id != PW_ID_CORE)
+        return;
+    if (seq == helper->sync_seq)
         helper->registry_ready = true;
+    if (helper->restart_pending && seq == helper->restart_seq) {
+        helper->restart_pending = false;
+        if (helper->active && helper->capture == CAPTURE_OFF) {
+            start_capture(helper);
+            process_x_events(helper);
+        }
+    }
 }
 
 static void on_core_error(void *userdata, uint32_t id, int seq, int res, const char *message)
@@ -820,6 +836,7 @@ static void on_param_changed(void *userdata, uint32_t id, const struct spa_pod *
             return;
         }
         relayout(helper);
+        update_release_timer(helper);
         if (was_drawn != helper->pip_drawn)
             emit("{\"event\":\"visible\",\"value\":%s}", helper->pip_drawn ? "true" : "false");
         process_x_events(helper);
@@ -928,7 +945,9 @@ static void finish_stop(struct helper *helper)
     helper->after_drain = AFTER_NONE;
     if (after == AFTER_RESTART && helper->active) {
         helper->stop_reason = NULL;
-        start_capture(helper);
+        // Reconnect once PipeWire has removed our old link, or the busy check would see it.
+        helper->restart_pending = true;
+        helper->restart_seq = pw_core_sync(helper->core, PW_ID_CORE, 0);
         return;
     }
     helper->active = false;
