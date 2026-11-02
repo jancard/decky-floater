@@ -1,5 +1,8 @@
 CC ?= cc
-CFLAGS ?= -O2 -Wall -Wextra -Werror -std=gnu11
+# CI builds with WERROR=-Werror; release builds must not break on a newer compiler's warnings.
+WERROR ?=
+CFLAGS ?= -O2 -Wall -Wextra -std=gnu11
+CFLAGS += $(WERROR)
 PKGS := libpipewire-0.3 x11 xext xrender xcomposite xdamage xfixes
 OUT := out
 HELPER := $(OUT)/pip-overlay

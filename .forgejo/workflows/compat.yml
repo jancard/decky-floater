@@ -1,0 +1,30 @@
+name: Upstream compatibility
+
+# Weekly early warning for Gamescope, MangoHud, SteamOS and Decky library changes.
+on:
+  schedule:
+    - cron: '17 4 * * 1'
+  workflow_dispatch:
+
+jobs:
+  upstream:
+    runs-on: docker
+    container:
+      image: ghcr.io/steamdeckhomebrew/holo-base:latest
+    steps:
+      - name: Install build tools
+        run: |
+          pacman -Syu --noconfirm --needed git nodejs npm python gcc make pkgconf libpipewire \
+            libx11 libxext libxrender libxcomposite libxdamage libxfixes
+          npm install -g pnpm@9
+      - uses: actions/checkout@v4
+      - name: Check the newest Gamescope and MangoHud
+        run: python3 scripts/compat-check.py
+      - name: Build against today's SteamOS image
+        if: always()
+        run: sh scripts/ci.sh
+      - name: Build against the newest Decky libraries
+        if: always()
+        run: |
+          pnpm update --latest @decky/ui @decky/api @decky/rollup
+          pnpm run build

@@ -1,8 +1,8 @@
 # Third-Party Notices
 
-Floater's original code is licensed under GPL-3.0-or-later (see LICENSE, which also carries the
-BSD 3-Clause notice of the Decky plugin template it started from). Dependency and icon licences
-remain separate.
+Floater's original code is Copyright (C) 2026 moderntimes and licensed under GPL-3.0-or-later (see
+LICENSE, which also carries the BSD 3-Clause notice of the Decky plugin template it started from).
+Dependency and icon licences remain separate.
 
 - React: MIT, copyright Meta Platforms, Inc. and affiliates. The production bundle can include React's JSX runtime. https://github.com/facebook/react
 - React Icons: MIT, Copyright 2018 kamijin_fanta <kamijin@live.jp>. https://github.com/react-icons/react-icons

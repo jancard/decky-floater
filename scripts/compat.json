@@ -1,0 +1,22 @@
+{
+  "gamescope": {
+    "repo": "ValveSoftware/gamescope",
+    "verified": "3.16.25",
+    "markers": {
+      "PipeWire stream named gamescope": "pw_stream_new\\([^,]+,\\s*\"gamescope\"",
+      "requested_size format key 0x70000": "SPA_FORMAT_VIDEO_requested_size\\s*=\\s*0x70000",
+      "focus_appid format key 0x70001": "SPA_FORMAT_VIDEO_gamescope_focus_appid\\s*=\\s*0x70001",
+      "BGRx capture format": "SPA_VIDEO_FORMAT_BGRx",
+      "GAMESCOPE_FOCUSED_APP atom": "\"GAMESCOPE_FOCUSED_APP\"",
+      "GAMESCOPE_FOCUSABLE_APPS atom": "\"GAMESCOPE_FOCUSABLE_APPS\"",
+      "GAMESCOPE_EXTERNAL_OVERLAY atom": "\"GAMESCOPE_EXTERNAL_OVERLAY\""
+    }
+  },
+  "mangohud": {
+    "repo": "flightlessmango/MangoHud",
+    "verified": "v0.8.4",
+    "markers": {
+      "mangoapp window title": "\"mangoapp overlay window\""
+    }
+  }
+}
