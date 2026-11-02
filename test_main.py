@@ -95,12 +95,18 @@ class PureFunctionTests(unittest.TestCase):
                 "media.class": "Stream/Input/Audio", "application.process.id": 100}}},
             {"id": 76, "type": "PipeWire:Interface:Client", "info": {"props": {}}},
             {"id": 77, "type": "PipeWire:Interface:Node", "info": None},
+            {"id": 78, "type": "PipeWire:Interface:Client", "info": {"props": {
+                "application.process.id": 100}}},
+            {"id": 79, "type": "PipeWire:Interface:Node", "info": {"props": {
+                "media.class": "Stream/Output/Audio", "client.id": 78}}},
+            {"id": 80, "type": "PipeWire:Interface:Node", "info": {"props": {
+                "media.class": "Stream/Output/Audio", "client.id": 99}}},
         ]
         with tempfile.TemporaryDirectory() as proc:
             for pid, appid in ((100, 3609786786), (200, 1091500)):
                 Path(proc, str(pid)).mkdir()
                 Path(proc, str(pid), "cgroup").write_text(f"0::/app-steam-app{appid}-1.scope\n")
-            self.assertEqual(audio_nodes_for_app(dump, 3609786786, proc), [73])
+            self.assertEqual(audio_nodes_for_app(dump, 3609786786, proc), [73, 79])
             self.assertEqual(audio_nodes_for_app(dump, 42, proc), [])
 
     def test_read_display_sources(self):

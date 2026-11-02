@@ -70,6 +70,14 @@ def appid_for_pid(pid, proc="/proc"):
 
 
 def audio_nodes_for_app(dump, appid, proc="/proc"):
+    # Streams usually carry their process id only on the PipeWire client that owns them.
+    client_pids = {}
+    for item in dump:
+        if item.get("type") == "PipeWire:Interface:Client":
+            props = (item.get("info") or {}).get("props") or {}
+            pid = props.get("application.process.id") or props.get("pipewire.sec.pid")
+            if pid is not None:
+                client_pids[int(item["id"])] = int(pid)
     nodes = []
     for item in dump:
         if item.get("type") != "PipeWire:Interface:Node":
@@ -78,6 +86,8 @@ def audio_nodes_for_app(dump, appid, proc="/proc"):
         if props.get("media.class") != "Stream/Output/Audio":
             continue
         pid = props.get("application.process.id")
+        if pid is None and props.get("client.id") is not None:
+            pid = client_pids.get(int(props["client.id"]))
         if pid is not None and appid_for_pid(int(pid), proc) == appid:
             nodes.append(int(item["id"]))
     return nodes

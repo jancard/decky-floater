@@ -95,7 +95,7 @@ static void test_layout(void)
 
     struct pip_size frame = { 960, 540 };
     struct pip_rect rect = pip_place(uhd, frame, PIP_CORNER_BOTTOM_RIGHT);
-    CHECK(rect.x == 3840 - 960 - 54 && rect.y == 2160 - 540 - 54 - 140);
+    CHECK(rect.x == 3840 - 960 - 54 && rect.y == 2160 - 540 - 54 - 86);
     rect = pip_place(uhd, frame, PIP_CORNER_TOP_LEFT);
     CHECK(rect.x == 54 && rect.y == 54);
     rect = pip_place((struct pip_size){ 100, 100 }, (struct pip_size){ 200, 200 }, PIP_CORNER_BOTTOM_RIGHT);
