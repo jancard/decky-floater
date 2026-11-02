@@ -90,6 +90,12 @@ Status: Phase 0 complete, NO-GO for the current capture/overlay architecture (20
 - 2026-11-02: pressing A sometimes paused the YouTube TV video while it was the Picture in Picture source. Both its Firefox gamepad bridge and its mpv (`input-gamepad=yes`) hold `/dev/input/event22`, Steam's single shared virtual pad `Microsoft X-Box 360 pad 0`, and act on it regardless of window focus.
 - An event logger on that device (A pressed in each place): Steam Library and QAM sent nothing to the pad (Steam consumes input); with Cyberpunk or YouTube TV in front every press reached the pad. The user saw the video pause only in those two cases. So any background app that reads the virtual pad receives the focused game's controller input.
 - Grabbing the device (`EVIOCGRAB`) would also starve the focused game, which reads the same pad. There is no general non-root way to route the pad by focus; apps must ignore the pad when they are not focused (e.g. check `GAMESCOPE_FOCUSED_APP`), which is fixable for the HTPC's own YouTube TV/Plezy wrappers but not for arbitrary apps.
+- Fixed for the HTPC's own apps in `htpc-setup` (`media/youtube-tv-hdr`, `media/plezy-hdr-mpv/scripts/focus-guard.lua`): both compare `GAMESCOPE_FOCUSED_APP` with their `$SteamAppId` and ignore the pad while another app is focused. The user confirmed no leaks with Cyberpunk in front and normal control when YouTube TV is focused. The plugin should warn that other apps may still react to the controller while in Picture in Picture.
+
+## Other Picture in Picture Sources
+
+- 2026-11-02, 30 FPS throttle. YouTube Android (Waydroid, `2216795915`, a native Wayland client from the container): steady 30 buffers/s, user confirmed the video played correctly in the box. Steam lists Waydroid shortcuts in `GAMESCOPE_FOCUSABLE_APPS`, which is the reliable way to pick a capturable AppID (the first attempt used Android TV's AppID while YouTube Android was running and got 0 buffers).
+- Cyberpunk 2077 (`1091500`) as the source with the Steam Library in front: steady 30 buffers/s with changing frames; the game showed its own pause menu, because it pauses when it loses focus. Background behaviour depends on the game.
 
 ## Steam Game Recording
 
