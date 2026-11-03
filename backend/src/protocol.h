@@ -50,7 +50,7 @@ struct pip_command {
 
 static const struct pip_settings pip_default_settings = {
     .corner = PIP_CORNER_BOTTOM_LEFT,
-    .scale = 0.25,
+    .scale = 0.30,
     .opacity = 1.0,
     .fps = 30,
     .border = 1,

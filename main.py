@@ -12,7 +12,7 @@ HYPERHDR_UNIT = "hyperhdr.service"
 CORNERS = ("top-left", "top-right", "bottom-left", "bottom-right")
 DEFAULT_SETTINGS = {
     "corner": "bottom-left",
-    "scale": 0.25,
+    "scale": 0.30,
     "opacity": 1.0,
     "fps": 30,
     "border": 1,
@@ -21,6 +21,8 @@ DEFAULT_SETTINGS = {
 MAX_APPID = 2**32 - 1
 DISPLAY_PATTERN = re.compile(r"^:\d+(\.\d+)?$")
 APPID_CGROUP = re.compile(r"app-steam-app(\d+)-")
+FLATPAK_CGROUP = re.compile(r"app-flatpak-([A-Za-z0-9_.-]+)-\d+\.scope")
+FLATPAK_ID = re.compile(r"^[A-Za-z_][\w-]*(\.[A-Za-z_][\w-]*){2,}$")
 BUSY_RETRIES = 8
 
 
@@ -64,25 +66,44 @@ def settings_arguments(settings):
             f"opacity={settings['opacity']:.3f} fps={settings['fps']} border={settings['border']}")
 
 
+def _cgroup(pid, proc):
+    try:
+        return Path(proc, str(pid), "cgroup").read_text()
+    except OSError:
+        return ""
+
+
 def appid_for_pid(pid, proc="/proc"):
     """Steam launches every app in a systemd scope named after its AppID."""
-    try:
-        cgroup = Path(proc, str(pid), "cgroup").read_text()
-    except OSError:
-        return None
-    match = APPID_CGROUP.search(cgroup)
+    match = APPID_CGROUP.search(_cgroup(pid, proc))
     return int(match.group(1)) if match else None
 
 
+def flatpaks_for_app(appid, proc="/proc"):
+    """Flatpak apps move into their own scope, but Steam's launcher keeps `flatpak run ID` in its command line."""
+    ids = set()
+    for entry in Path(proc).iterdir():
+        if not entry.name.isdigit() or appid_for_pid(entry.name, proc) != appid:
+            continue
+        try:
+            args = [arg.decode(errors="replace") for arg in Path(entry, "cmdline").read_bytes().split(b"\0")]
+        except OSError:
+            continue
+        for index, arg in enumerate(args[:-1]):
+            if Path(arg).name == "flatpak" and args[index + 1] == "run":
+                ids.update(name for name in args[index + 2:] if FLATPAK_ID.match(name))
+    return ids
+
+
 def audio_nodes_for_app(dump, appid, proc="/proc"):
-    # Streams usually carry their process id only on the PipeWire client that owns them.
+    # Streams usually carry their process id only on the PipeWire client that owns them, and
+    # sandboxed apps report ids from their own PID namespace, so try every candidate.
     client_pids = {}
     for item in dump:
         if item.get("type") == "PipeWire:Interface:Client":
             props = (item.get("info") or {}).get("props") or {}
-            pid = props.get("application.process.id") or props.get("pipewire.sec.pid")
-            if pid is not None:
-                client_pids[int(item["id"])] = int(pid)
+            client_pids[int(item["id"])] = [props.get("pipewire.sec.pid"), props.get("application.process.id")]
+    flatpaks = None
     nodes = []
     for item in dump:
         if item.get("type") != "PipeWire:Interface:Node":
@@ -90,11 +111,20 @@ def audio_nodes_for_app(dump, appid, proc="/proc"):
         props = (item.get("info") or {}).get("props") or {}
         if props.get("media.class") != "Stream/Output/Audio":
             continue
-        pid = props.get("application.process.id")
-        if pid is None and props.get("client.id") is not None:
-            pid = client_pids.get(int(props["client.id"]))
-        if pid is not None and appid_for_pid(int(pid), proc) == appid:
-            nodes.append(int(item["id"]))
+        candidates = [props.get("application.process.id")]
+        if props.get("client.id") is not None:
+            candidates += client_pids.get(int(props["client.id"]), [])
+        for pid in {int(pid) for pid in candidates if pid is not None}:
+            if appid_for_pid(pid, proc) == appid:
+                nodes.append(int(item["id"]))
+                break
+            match = FLATPAK_CGROUP.search(_cgroup(pid, proc))
+            if match:
+                if flatpaks is None:
+                    flatpaks = flatpaks_for_app(appid, proc)
+                if match.group(1) in flatpaks:
+                    nodes.append(int(item["id"]))
+                    break
     return nodes
 
 

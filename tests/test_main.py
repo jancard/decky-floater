@@ -20,7 +20,7 @@ sys.modules["decky"] = decky
 
 import main  # noqa: E402
 from main import (DEFAULT_SETTINGS, Helper, Plugin, appid_for_pid, audio_nodes_for_app,  # noqa: E402
-                  read_display, settings_arguments, validate_settings)
+                  flatpaks_for_app, read_display, settings_arguments, validate_settings)
 
 FAKE_HELPER = r"""#!/usr/bin/env python3
 import json, sys
@@ -73,7 +73,7 @@ class PureFunctionTests(unittest.TestCase):
 
     def test_settings_arguments(self):
         self.assertEqual(settings_arguments(DEFAULT_SETTINGS),
-                         "corner=bottom-left scale=0.250 opacity=1.000 fps=30 border=1")
+                         "corner=bottom-left scale=0.300 opacity=1.000 fps=30 border=1")
 
     def test_appid_from_cgroup(self):
         with tempfile.TemporaryDirectory() as proc:
@@ -110,6 +110,37 @@ class PureFunctionTests(unittest.TestCase):
                 Path(proc, str(pid), "cgroup").write_text(f"0::/app-steam-app{appid}-1.scope\n")
             self.assertEqual(audio_nodes_for_app(dump, 3609786786, proc), [73, 79])
             self.assertEqual(audio_nodes_for_app(dump, 42, proc), [])
+
+    def test_audio_nodes_use_trusted_pid_when_reported_pid_is_namespaced(self):
+        dump = [
+            {"id": 10, "type": "PipeWire:Interface:Client", "info": {"props": {
+                "application.process.id": 2, "pipewire.sec.pid": 100}}},
+            {"id": 11, "type": "PipeWire:Interface:Node", "info": {"props": {
+                "media.class": "Stream/Output/Audio", "application.process.id": 2, "client.id": 10}}},
+        ]
+        with tempfile.TemporaryDirectory() as proc:
+            Path(proc, "100").mkdir()
+            Path(proc, "100", "cgroup").write_text("0::/app-steam-app42-1.scope\n")
+            self.assertEqual(audio_nodes_for_app(dump, 42, proc), [11])
+
+    def test_audio_nodes_map_flatpak_apps_through_steams_launcher(self):
+        dump = [
+            {"id": 20, "type": "PipeWire:Interface:Client", "info": {"props": {"pipewire.sec.pid": 300}}},
+            {"id": 21, "type": "PipeWire:Interface:Node", "info": {"props": {
+                "media.class": "Stream/Output/Audio", "client.id": 20}}},
+        ]
+        with tempfile.TemporaryDirectory() as proc:
+            launcher = Path(proc, "200")
+            launcher.mkdir()
+            launcher.joinpath("cgroup").write_text("0::/app-steam-app42-7.scope\n")
+            launcher.joinpath("cmdline").write_bytes(b"\0".join([
+                b"reaper", b"SteamLaunch", b"AppId=42", b"--", b"/usr/bin/flatpak", b"run",
+                b"--branch=stable", b"--command=/app/bin/chrome", b"com.google.Chrome", b"@@u", b"@@", b""]))
+            Path(proc, "300").mkdir()
+            Path(proc, "300", "cgroup").write_text("0::/app-flatpak-com.google.Chrome-12345.scope\n")
+            self.assertEqual(flatpaks_for_app(42, proc), {"com.google.Chrome"})
+            self.assertEqual(audio_nodes_for_app(dump, 42, proc), [21])
+            self.assertEqual(audio_nodes_for_app(dump, 43, proc), [])
 
     def test_read_display_sources(self):
         with tempfile.TemporaryDirectory() as runtime, tempfile.TemporaryDirectory() as proc:
@@ -173,7 +204,7 @@ class PluginTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(state["active"])
         self.assertEqual(state["appid"], 42)
         self.assertEqual(self.plugin._helper.commands,
-                         ["show appid=42 corner=bottom-left scale=0.250 opacity=1.000 fps=30 border=1"])
+                         ["show appid=42 corner=bottom-left scale=0.300 opacity=1.000 fps=30 border=1"])
         self.assertEqual(self.systemctl, [])
         decky.emit.assert_awaited()
 
@@ -228,7 +259,7 @@ class PluginTests(unittest.IsolatedAsyncioTestCase):
         self.plugin._state.update(active=True, appid=42)
         await self.plugin.start(42)
         self.assertEqual(self.plugin._helper.commands,
-                         ["set corner=bottom-left scale=0.250 opacity=1.000 fps=30 border=1"])
+                         ["set corner=bottom-left scale=0.300 opacity=1.000 fps=30 border=1"])
 
     async def test_switching_app_restores_audio_and_shows_new_app(self):
         self.plugin._helper = FakeHelper([{"event": "starting", "appid": 7}])
@@ -240,7 +271,7 @@ class PluginTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(state["appid"], 7)
         self.assertTrue(state["active"])
         self.assertEqual(self.plugin._helper.commands,
-                         ["show appid=7 corner=bottom-left scale=0.250 opacity=1.000 fps=30 border=1"])
+                         ["show appid=7 corner=bottom-left scale=0.300 opacity=1.000 fps=30 border=1"])
 
     async def test_rejects_invalid_appids(self):
         for appid in (0, -1, 2**32, "42", 4.2, True, None):
