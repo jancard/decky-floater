@@ -15,11 +15,11 @@ jobs:
     # The Decky Plugin Store builds the helper in this SteamOS image too.
     container: ghcr.io/steamdeckhomebrew/holo-base:latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-holo
       - name: Test, build and package
         run: sh scripts/ci.sh
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: floater
           path: release/

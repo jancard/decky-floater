@@ -13,7 +13,8 @@ all: $(HELPER)
 
 $(HELPER): src/pip-overlay.c $(CORE_SRC) src/protocol.h src/layout.h
 	mkdir -p $(OUT)
-	$(CC) $(CFLAGS) src/pip-overlay.c $(CORE_SRC) -o $@ $(shell pkg-config --cflags --libs $(PKGS)) -lm
+	flags=$$(pkg-config --cflags --libs $(PKGS)) && \
+		$(CC) $(CFLAGS) src/pip-overlay.c $(CORE_SRC) -o $@ $$flags -lm
 
 .PHONY: test
 test: $(OUT)/test_protocol
