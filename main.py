@@ -8,7 +8,6 @@ from pathlib import Path
 import decky
 
 HELPER_NAME = "pip-overlay"
-HYPERHDR_UNIT = "hyperhdr.service"
 CORNERS = ("top-left", "top-right", "bottom-left", "bottom-right")
 DEFAULT_SETTINGS = {
     "corner": "bottom-left",
@@ -16,13 +15,19 @@ DEFAULT_SETTINGS = {
     "opacity": 1.0,
     "fps": 30,
     "border": 1,
-    "pause_hyperhdr": True,
+    "pause_services": [],
 }
 MAX_APPID = 2**32 - 1
 DISPLAY_PATTERN = re.compile(r"^:\d+(\.\d+)?$")
 APPID_CGROUP = re.compile(r"app-steam-app(\d+)-")
 FLATPAK_CGROUP = re.compile(r"app-flatpak-([A-Za-z0-9_.-]+)-\d+\.scope")
 FLATPAK_ID = re.compile(r"^[A-Za-z_][\w-]*(\.[A-Za-z_][\w-]*){2,}$")
+SERVICE_NAME = re.compile(r"^[\w@.:-]+\.service$")
+USER_SERVICE_CGROUP = re.compile(
+    r"^0::(/user\.slice/user-\d+\.slice/user@\d+\.service/app\.slice/([\w@.:-]+\.service))$", re.M)
+# Never offer to pause the game session itself.
+PROTECTED_PROCESSES = {"steam", "steamwebhelper", "gamescope", "gamescope-wl", "Xwayland"}
+MAX_PAUSE_SERVICES = 8
 BUSY_RETRIES = 8
 
 
@@ -54,9 +59,11 @@ def validate_settings(changes):
         elif key == "border":
             if type(value) is not int or not 0 <= value <= 20:
                 raise ValueError("border must be an integer between 0 and 20")
-        elif key == "pause_hyperhdr":
-            if type(value) is not bool:
-                raise ValueError("pause_hyperhdr must be a boolean")
+        elif key == "pause_services":
+            if (not isinstance(value, list) or len(value) > MAX_PAUSE_SERVICES or len(set(value)) != len(value)
+                    or not all(isinstance(unit, str) and SERVICE_NAME.match(unit) for unit in value)):
+                raise ValueError(f"pause_services must be up to {MAX_PAUSE_SERVICES} distinct .service names")
+            value = list(value)
         checked[key] = value
     return checked
 
@@ -95,37 +102,74 @@ def flatpaks_for_app(appid, proc="/proc"):
     return ids
 
 
-def audio_nodes_for_app(dump, appid, proc="/proc"):
-    # Streams usually carry their process id only on the PipeWire client that owns them, and
-    # sandboxed apps report ids from their own PID namespace, so try every candidate.
+def node_pids(dump):
+    """Candidate process ids per PipeWire node.
+
+    Nodes usually carry their process id only on the PipeWire client that owns them, and
+    sandboxed apps report ids from their own PID namespace, so collect every candidate.
+    """
     client_pids = {}
     for item in dump:
         if item.get("type") == "PipeWire:Interface:Client":
             props = (item.get("info") or {}).get("props") or {}
             client_pids[int(item["id"])] = [props.get("pipewire.sec.pid"), props.get("application.process.id")]
-    flatpaks = None
-    nodes = []
+    nodes = {}
     for item in dump:
         if item.get("type") != "PipeWire:Interface:Node":
             continue
         props = (item.get("info") or {}).get("props") or {}
-        if props.get("media.class") != "Stream/Output/Audio":
-            continue
         candidates = [props.get("application.process.id")]
         if props.get("client.id") is not None:
             candidates += client_pids.get(int(props["client.id"]), [])
-        for pid in {int(pid) for pid in candidates if pid is not None}:
+        nodes[int(item["id"])] = (props, {int(pid) for pid in candidates if pid is not None})
+    return nodes
+
+
+def audio_nodes_for_app(dump, appid, proc="/proc"):
+    flatpaks = None
+    nodes = []
+    for node, (props, pids) in node_pids(dump).items():
+        if props.get("media.class") != "Stream/Output/Audio":
+            continue
+        for pid in pids:
             if appid_for_pid(pid, proc) == appid:
-                nodes.append(int(item["id"]))
+                nodes.append(node)
                 break
             match = FLATPAK_CGROUP.search(_cgroup(pid, proc))
             if match:
                 if flatpaks is None:
                     flatpaks = flatpaks_for_app(appid, proc)
                 if match.group(1) in flatpaks:
-                    nodes.append(int(item["id"]))
+                    nodes.append(node)
                     break
     return nodes
+
+
+def user_service_for_pid(pid, proc="/proc", cgroup_root="/sys/fs/cgroup"):
+    """The systemd user service a process runs in, unless that service is part of the game session."""
+    match = USER_SERVICE_CGROUP.search(_cgroup(pid, proc))
+    if not match or match.group(2).startswith(("steam", "gamescope-session")):
+        return None
+    try:
+        members = Path(cgroup_root + match.group(1), "cgroup.procs").read_text().split()
+    except OSError:
+        return None
+    for member in members:
+        try:
+            if Path(proc, member, "comm").read_text().strip() in PROTECTED_PROCESSES:
+                return None
+        except OSError:
+            continue
+    return match.group(2)
+
+
+def service_for_node(dump, node, proc="/proc", cgroup_root="/sys/fs/cgroup"):
+    _, pids = node_pids(dump).get(node, ({}, set()))
+    for pid in sorted(pids):
+        unit = user_service_for_pid(pid, proc, cgroup_root)
+        if unit is not None:
+            return unit
+    return None
 
 
 def read_display(runtime_dir, proc="/proc"):
@@ -264,7 +308,8 @@ class Plugin:
         self._settings_path = Path(decky.DECKY_PLUGIN_SETTINGS_DIR, "settings.json")
         self._settings = self._load_settings()
         self._helper = None
-        self._paused_hyperhdr = False
+        self._paused_services = []
+        self._busy_service = None
         self._muted_appid = None
         self._state = {"active": False, "appid": None, "visible": False, "streaming": False,
                        "reason": None, "stats": None}
@@ -272,7 +317,11 @@ class Plugin:
     def _load_settings(self):
         settings = dict(DEFAULT_SETTINGS)
         try:
-            settings.update(validate_settings(json.loads(self._settings_path.read_text())))
+            saved = json.loads(self._settings_path.read_text())
+            if not isinstance(saved, dict):
+                raise ValueError("settings must be an object")
+            # Settings from older versions are dropped, not allowed to discard the rest.
+            settings.update(validate_settings({key: saved[key] for key in saved if key in DEFAULT_SETTINGS}))
         except FileNotFoundError:
             pass
         except (OSError, ValueError) as error:
@@ -300,22 +349,24 @@ class Plugin:
             raise RuntimeError(errors.decode().strip() or f"{Path(command[0]).name} failed")
         return output.decode()
 
-    async def _hyperhdr_active(self):
+    async def _reader_service(self, node):
+        """The user service whose process is reading Gamescope's capture stream, if any."""
+        if type(node) is not int:
+            return None
         try:
-            output = await self._run("/usr/bin/systemctl", "--user", "is-active", HYPERHDR_UNIT)
-        except RuntimeError:
-            return False
-        return output.strip() in ("active", "activating")
+            return service_for_node(json.loads(await self._run("/usr/bin/pw-dump")), node)
+        except (RuntimeError, ValueError) as error:
+            decky.logger.info("could not identify the capture reader: %s", error)
+            return None
 
-    async def _restore_hyperhdr(self):
-        if not self._paused_hyperhdr:
-            return
-        self._paused_hyperhdr = False
-        try:
-            await self._run("/usr/bin/systemctl", "--user", "start", HYPERHDR_UNIT, timeout=25)
-            decky.logger.info("restarted %s after Picture in Picture", HYPERHDR_UNIT)
-        except RuntimeError as error:
-            decky.logger.error("could not restart %s: %s", HYPERHDR_UNIT, error)
+    async def _restore_services(self):
+        units, self._paused_services = self._paused_services, []
+        for unit in reversed(units):
+            try:
+                await self._run("/usr/bin/systemctl", "--user", "start", unit, timeout=25)
+                decky.logger.info("restarted %s after Picture in Picture", unit)
+            except RuntimeError as error:
+                decky.logger.error("could not restart %s: %s", unit, error)
 
     async def _ensure_helper(self):
         if self._helper is not None and self._helper.alive:
@@ -352,7 +403,7 @@ class Plugin:
             self._state.update(active=False, visible=False, streaming=False, stats=None,
                                reason=reason)
             if was_active and reason not in ("hidden", "quit"):
-                asyncio.create_task(self._restore_hyperhdr())
+                asyncio.create_task(self._restore_services())
                 asyncio.create_task(self._restore_audio())
         elif kind == "error":
             decky.logger.error("helper error: %s", event.get("message"))
@@ -369,7 +420,7 @@ class Plugin:
 
     def get_state_sync(self):
         return dict(self._state, settings=dict(self._settings),
-                    paused_hyperhdr=self._paused_hyperhdr)
+                    paused_services=list(self._paused_services), busy_service=self._busy_service)
 
     async def get_state(self):
         return self.get_state_sync()
@@ -390,6 +441,7 @@ class Plugin:
             if self._state["active"]:
                 await self._restore_audio()
             command = f"show appid={appid} {settings_arguments(self._settings)}"
+            self._busy_service = None
             for attempt in range(BUSY_RETRIES + 1):
                 event = await self._helper.request(command, {"starting", "stopped"})
                 if event["event"] == "starting":
@@ -398,18 +450,27 @@ class Plugin:
                     return self.get_state_sync()
                 if event.get("reason") != "capture-busy" or attempt == BUSY_RETRIES:
                     break
-                if (attempt == 0 and self._settings["pause_hyperhdr"] and not self._paused_hyperhdr
-                        and await self._hyperhdr_active()):
-                    await self._run("/usr/bin/systemctl", "--user", "stop", HYPERHDR_UNIT, timeout=25)
-                    self._paused_hyperhdr = True
-                    decky.logger.info("paused %s for Picture in Picture", HYPERHDR_UNIT)
-                elif not self._paused_hyperhdr:
+                unit = await self._reader_service(event.get("node"))
+                if unit in self._paused_services or (unit is None and self._paused_services):
+                    pass  # A paused reader's link takes a moment to disappear.
+                elif unit is not None and unit in self._settings["pause_services"]:
+                    try:
+                        await self._run("/usr/bin/systemctl", "--user", "stop", unit, timeout=25)
+                    except RuntimeError as error:
+                        decky.logger.error("could not pause %s: %s", unit, error)
+                        break
+                    self._paused_services.append(unit)
+                    decky.logger.info("paused %s for Picture in Picture", unit)
+                else:
+                    self._busy_service = unit
                     break
                 await asyncio.sleep(0.5)
-            await self._restore_hyperhdr()
+            await self._restore_services()
             reason = event.get("reason", "unknown")
             self._state.update(active=False, reason=reason)
             await self._emit_state()
+            if self._busy_service is not None:
+                raise RuntimeError(f"{self._busy_service} is using Gamescope's capture stream")
             if reason == "capture-busy":
                 raise RuntimeError("Another app is using Gamescope's capture stream "
                                    "(for example Steam Game Recording)")
@@ -420,7 +481,7 @@ class Plugin:
             if self._helper is not None and self._helper.alive and self._state["active"]:
                 await self._helper.request("hide", {"stopped"})
             self._state.update(active=False, visible=False, streaming=False, stats=None)
-            await self._restore_hyperhdr()
+            await self._restore_services()
             await self._restore_audio()
             await self._emit_state()
             return self.get_state_sync()
@@ -486,5 +547,5 @@ class Plugin:
     async def _unload(self):
         if self._helper is not None:
             await self._helper.stop()
-        await self._restore_hyperhdr()
+        await self._restore_services()
         await self._restore_audio()

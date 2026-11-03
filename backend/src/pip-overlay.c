@@ -95,6 +95,7 @@ struct helper {
     enum capture_state capture;
     enum after_drain after_drain;
     const char *stop_reason;
+    uint32_t busy_node;
     struct pw_buffer *held[MAX_HELD_BUFFERS];
     size_t held_count;
     struct spa_source *drain_timer;
@@ -694,10 +695,16 @@ static bool foreign_consumer(struct helper *helper)
         if (link->output_node == helper->gamescope_node && link->input_node != own) {
             fprintf(stderr, "pip-overlay: link %u from the Gamescope node to node %u (own %u)\n",
                 link->id, link->input_node, own);
+            helper->busy_node = link->input_node;
             return true;
         }
     }
     return false;
+}
+
+static void emit_busy(struct helper *helper)
+{
+    emit("{\"event\":\"stopped\",\"reason\":\"capture-busy\",\"node\":%" PRIu32 "}", helper->busy_node);
 }
 
 static void on_registry_global(void *userdata, uint32_t id, uint32_t permissions, const char *type,
@@ -932,7 +939,7 @@ static void start_capture(struct helper *helper)
     }
     if (foreign_consumer(helper)) {
         helper->active = false;
-        emit("{\"event\":\"stopped\",\"reason\":\"capture-busy\"}");
+        emit_busy(helper);
         return;
     }
 
@@ -1004,7 +1011,9 @@ static void finish_stop(struct helper *helper)
     destroy_frame(helper);
     map_window(helper, false);
     XFlush(helper->display);
-    if (helper->stop_reason != NULL)
+    if (helper->stop_reason != NULL && strcmp(helper->stop_reason, "capture-busy") == 0)
+        emit_busy(helper);
+    else if (helper->stop_reason != NULL)
         emit("{\"event\":\"stopped\",\"reason\":\"%s\"}", helper->stop_reason);
     helper->stop_reason = NULL;
     if (after == AFTER_QUIT)
@@ -1269,6 +1278,7 @@ int main(void)
 
     static struct helper helper = {
         .gamescope_node = SPA_ID_INVALID,
+        .busy_node = SPA_ID_INVALID,
     };
     helper.settings = pip_default_settings;
 

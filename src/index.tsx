@@ -20,7 +20,7 @@ interface Settings {
   opacity: number;
   fps: number;
   border: number;
-  pause_hyperhdr: boolean;
+  pause_services: string[];
 }
 
 interface State {
@@ -29,7 +29,8 @@ interface State {
   visible: boolean;
   streaming: boolean;
   reason: string | null;
-  paused_hyperhdr: boolean;
+  paused_services: string[];
+  busy_service: string | null;
   settings: Settings;
 }
 
@@ -206,10 +207,21 @@ function Content() {
     !state ? "Loading..."
     : busy && state.active ? "Switching..."
     : state.active ? (state.visible ? "Showing" : "Hidden while the app is in front")
-      + (state.paused_hyperhdr ? " · HyperHDR paused until closed" : "")
+      + (state.paused_services.length ? ` · ${state.paused_services.join(", ")} paused until closed` : "")
     : candidates.length === 0 ? "Start an app, then come back here"
     : undefined
   );
+  // Services the user may let Floater pause: approved ones, plus the one that just held the stream.
+  const services = settings
+    ? [...new Set([...settings.pause_services, ...(state?.busy_service ? [state.busy_service] : [])])]
+    : [];
+  const allowPause = (unit: string, allowed: boolean) => {
+    const next = allowed
+      ? [...settings!.pause_services.filter((name) => name !== unit), unit]
+      : settings!.pause_services.filter((name) => name !== unit);
+    setState({ ...state!, settings: { ...settings!, pause_services: next } });
+    void changeSettings({ pause_services: next });
+  };
 
   return (
     <>
@@ -239,6 +251,21 @@ function Content() {
           )}
         </PanelSectionRow>
       </PanelSection>
+      {services.length > 0 && (
+        <PanelSection title="Capture stream">
+          {services.map((unit) => (
+            <PanelSectionRow key={unit}>
+              <ToggleField
+                label={`Pause ${unit}`}
+                description="It also reads Gamescope's capture stream. Floater stops it while Picture in Picture runs and starts it again afterwards."
+                checked={settings!.pause_services.includes(unit)}
+                disabled={busy || state!.active}
+                onChange={(allowed) => allowPause(unit, allowed)}
+              />
+            </PanelSectionRow>
+          ))}
+        </PanelSection>
+      )}
       {state?.active && (
         <PanelSection title="Picture in Picture audio">
           <PanelSectionRow>

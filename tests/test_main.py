@@ -59,13 +59,16 @@ class FakeHelper:
 class PureFunctionTests(unittest.TestCase):
     def test_validate_settings_accepts_valid_values(self):
         self.assertEqual(validate_settings({"corner": "top-left", "scale": 0.3, "opacity": 1,
-                                            "fps": 60, "border": 3, "pause_hyperhdr": False}),
+                                            "fps": 60, "border": 3, "pause_services": ["lights@tv.service"]}),
                          {"corner": "top-left", "scale": 0.3, "opacity": 1.0, "fps": 60, "border": 3,
-                          "pause_hyperhdr": False})
+                          "pause_services": ["lights@tv.service"]})
 
     def test_validate_settings_rejects_invalid_values(self):
         for bad in ({"corner": "middle"}, {"scale": 0.9}, {"scale": "0.3"}, {"opacity": 0.1},
-                    {"fps": 0}, {"fps": 30.0}, {"fps": True}, {"pause_hyperhdr": 1},
+                    {"fps": 0}, {"fps": 30.0}, {"fps": True}, {"pause_services": "a.service"},
+                    {"pause_services": ["a.timer"]}, {"pause_services": ["../a.service"]},
+                    {"pause_services": ["a.service", "a.service"]}, {"pause_services": [1]},
+                    {"pause_services": [f"s{n}.service" for n in range(main.MAX_PAUSE_SERVICES + 1)]},
                     {"border": 21}, {"border": -1}, {"border": 2.5},
                     {"colour": "red"}, ["corner"], None):
             with self.assertRaises(ValueError, msg=repr(bad)):
@@ -123,6 +126,28 @@ class PureFunctionTests(unittest.TestCase):
             Path(proc, "100", "cgroup").write_text("0::/app-steam-app42-1.scope\n")
             self.assertEqual(audio_nodes_for_app(dump, 42, proc), [11])
 
+    def test_service_for_node_finds_user_services_but_not_the_session(self):
+        app_slice = "/user.slice/user-1000.slice/user@1000.service/app.slice"
+        dump = [
+            {"id": 30, "type": "PipeWire:Interface:Client", "info": {"props": {"pipewire.sec.pid": 400}}},
+            {"id": 31, "type": "PipeWire:Interface:Node", "info": {"props": {"client.id": 30}}},
+            {"id": 32, "type": "PipeWire:Interface:Node", "info": {"props": {"application.process.id": 500}}},
+            {"id": 33, "type": "PipeWire:Interface:Node", "info": {"props": {"application.process.id": 600}}},
+        ]
+        with tempfile.TemporaryDirectory() as proc, tempfile.TemporaryDirectory() as cgroups:
+            for pid, unit, comm in ((400, "lights.service", "reader"), (500, "launcher.service", "steam"),
+                                    (600, None, "gamescope-wl")):
+                Path(proc, str(pid)).mkdir()
+                Path(proc, str(pid), "comm").write_text(comm + "\n")
+                path = f"{app_slice}/{unit}" if unit else "/user.slice/user-1000.slice/session-2.scope"
+                Path(proc, str(pid), "cgroup").write_text(f"0::{path}\n")
+                Path(cgroups + path).mkdir(parents=True)
+                Path(cgroups + path, "cgroup.procs").write_text(f"{pid}\n")
+            self.assertEqual(main.service_for_node(dump, 31, proc, cgroups), "lights.service")
+            self.assertIsNone(main.service_for_node(dump, 32, proc, cgroups))
+            self.assertIsNone(main.service_for_node(dump, 33, proc, cgroups))
+            self.assertIsNone(main.service_for_node(dump, 99, proc, cgroups))
+
     def test_audio_nodes_map_flatpak_apps_through_steams_launcher(self):
         dump = [
             {"id": 20, "type": "PipeWire:Interface:Client", "info": {"props": {"pipewire.sec.pid": 300}}},
@@ -168,12 +193,11 @@ class PluginTests(unittest.IsolatedAsyncioTestCase):
 
         async def run(*command, timeout=10):
             self.systemctl.append(command[1:])
-            if command[-2:] == ("is-active", main.HYPERHDR_UNIT):
-                return "active\n" if self.hyperhdr_active else "inactive\n"
             return ""
 
-        self.hyperhdr_active = True
         self.plugin._run = run
+        self.readers = {}
+        self.plugin._reader_service = AsyncMock(side_effect=lambda node: self.readers.get(node))
 
     async def asyncTearDown(self):
         self.settings_dir.cleanup()
@@ -208,51 +232,67 @@ class PluginTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.systemctl, [])
         decky.emit.assert_awaited()
 
-    async def test_start_pauses_hyperhdr_when_busy_and_restores_on_stop(self):
+    async def test_start_pauses_an_allowed_reader_and_restores_it_on_stop(self):
+        self.readers[90] = "lights.service"
+        self.plugin._settings["pause_services"] = ["lights.service"]
         self.plugin._helper = FakeHelper([
-            {"event": "stopped", "reason": "capture-busy"},
+            {"event": "stopped", "reason": "capture-busy", "node": 90},
+            {"event": "stopped", "reason": "capture-busy", "node": 90},
             {"event": "starting", "appid": 42},
             {"event": "stopped", "reason": "hidden"},
         ])
         with patch("asyncio.sleep", AsyncMock()):
             state = await self.plugin.start(42)
         self.assertTrue(state["active"])
-        self.assertTrue(state["paused_hyperhdr"])
-        self.assertIn(("--user", "stop", main.HYPERHDR_UNIT), self.systemctl)
+        self.assertEqual(state["paused_services"], ["lights.service"])
+        self.assertEqual(self.systemctl, [("--user", "stop", "lights.service")])
         await self.plugin.stop()
-        self.assertEqual(self.systemctl[-1], ("--user", "start", main.HYPERHDR_UNIT))
-        self.assertFalse(self.plugin._paused_hyperhdr)
+        self.assertEqual(self.systemctl[-1], ("--user", "start", "lights.service"))
+        self.assertEqual(self.plugin._paused_services, [])
 
-    async def test_start_busy_without_hyperhdr_fails_without_touching_services(self):
-        self.hyperhdr_active = False
-        self.plugin._helper = FakeHelper([{"event": "stopped", "reason": "capture-busy"}])
-        with self.assertRaisesRegex(RuntimeError, "Game Recording"):
-            await self.plugin.start(42)
-        self.assertNotIn(("--user", "stop", main.HYPERHDR_UNIT), self.systemctl)
-        self.assertFalse(self.plugin._state["active"])
-
-    async def test_start_busy_respects_pause_setting(self):
-        self.plugin._settings["pause_hyperhdr"] = False
-        self.plugin._helper = FakeHelper([{"event": "stopped", "reason": "capture-busy"}])
-        with self.assertRaises(RuntimeError):
+    async def test_start_busy_with_unapproved_reader_offers_it_without_touching_it(self):
+        self.readers[90] = "lights.service"
+        self.plugin._helper = FakeHelper([{"event": "stopped", "reason": "capture-busy", "node": 90}])
+        with self.assertRaisesRegex(RuntimeError, "lights.service is using"):
             await self.plugin.start(42)
         self.assertEqual(self.systemctl, [])
+        self.assertEqual(self.plugin.get_state_sync()["busy_service"], "lights.service")
+        self.assertFalse(self.plugin._state["active"])
 
-    async def test_persistent_busy_restores_hyperhdr(self):
-        busy = {"event": "stopped", "reason": "capture-busy"}
+    async def test_start_busy_with_steam_reader_fails_without_touching_services(self):
+        self.plugin._settings["pause_services"] = ["lights.service"]
+        self.plugin._helper = FakeHelper([{"event": "stopped", "reason": "capture-busy", "node": 91}])
+        with self.assertRaisesRegex(RuntimeError, "Game Recording"):
+            await self.plugin.start(42)
+        self.assertEqual(self.systemctl, [])
+        self.assertIsNone(self.plugin.get_state_sync()["busy_service"])
+
+    async def test_persistent_busy_restores_paused_readers(self):
+        self.readers[90] = "lights.service"
+        self.plugin._settings["pause_services"] = ["lights.service"]
+        busy = {"event": "stopped", "reason": "capture-busy", "node": 90}
         self.plugin._helper = FakeHelper([busy] * (main.BUSY_RETRIES + 1))
         with patch("asyncio.sleep", AsyncMock()), self.assertRaises(RuntimeError):
             await self.plugin.start(42)
-        self.assertEqual(self.systemctl[-1], ("--user", "start", main.HYPERHDR_UNIT))
+        self.assertEqual(self.systemctl, [("--user", "stop", "lights.service"),
+                                          ("--user", "start", "lights.service")])
 
-    async def test_helper_stopping_on_its_own_restores_hyperhdr(self):
+    async def test_helper_stopping_on_its_own_restores_paused_readers(self):
         self.plugin._state["active"] = True
-        self.plugin._paused_hyperhdr = True
+        self.plugin._paused_services = ["lights.service"]
         await self.plugin._on_event({"event": "stopped", "reason": "source-closed"})
         await asyncio.sleep(0)
         self.assertFalse(self.plugin._state["active"])
         self.assertEqual(self.plugin._state["reason"], "source-closed")
-        self.assertEqual(self.systemctl[-1], ("--user", "start", main.HYPERHDR_UNIT))
+        self.assertEqual(self.systemctl[-1], ("--user", "start", "lights.service"))
+
+    async def test_settings_from_older_versions_do_not_discard_the_rest(self):
+        Path(self.settings_dir.name, "settings.json").write_text(
+            json.dumps({"corner": "top-left", "border": 4, "retired_option": True}))
+        settings = self.plugin._load_settings()
+        self.assertEqual((settings["corner"], settings["border"], settings["pause_services"]),
+                         ("top-left", 4, []))
+        self.assertNotIn("retired_option", settings)
 
     async def test_restarting_same_app_updates_settings(self):
         self.plugin._helper = FakeHelper([])

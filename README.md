@@ -62,6 +62,7 @@ While Picture in Picture is running, choose a different app in the list to switc
 ## Troubleshooting
 
 - *"Another app is using Gamescope's capture stream"*: turn off Steam Game Recording's background recording, or end any Remote Play session.
+- *"something.service is using Gamescope's capture stream"*: a background service (for example ambient lighting) reads the same stream. Turn on **Pause something.service** under **Capture stream** and start again; Floater stops that service while Picture in Picture runs and starts it again afterwards.
 - *"The Picture in Picture app closed"*: the app exited or Steam no longer lists it as running.
 - Logs are in `~/homebrew/logs/Floater/`.
 
