@@ -29,7 +29,7 @@ Floater isn't in the Decky Plugin Store yet.
 
 ### Manual install
 
-1. Download `floater-vX.Y.Z.zip` from the [latest release](../../releases/latest).
+1. Download `floater-vX.Y.Z.zip` from the [releases page](https://github.com/jancard/decky-floater/releases).
 2. In Game Mode, open Decky's settings, turn on **Developer mode**, then go to **Developer → Install Plugin from ZIP** and choose the file.
 
 ## Usage

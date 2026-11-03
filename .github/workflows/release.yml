@@ -35,10 +35,12 @@ jobs:
         with:
           name: release
           path: release
-      - name: Create a draft release
+      - name: Publish the release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          flags=(--draft --generate-notes --title "Floater $GITHUB_REF_NAME")
-          [[ $GITHUB_REF_NAME == *-* ]] && flags+=(--prerelease)
+          notes="Install: in Decky's settings turn on Developer mode, then use Developer → Install Plugin from ZIP with floater-$GITHUB_REF_NAME.zip."
+          flags=(--generate-notes --notes "$notes" --title "Floater $GITHUB_REF_NAME")
+          # Versions before 1.0.0 and tags like v1.2.0-beta.1 are pre-releases.
+          [[ $GITHUB_REF_NAME == v0.* || $GITHUB_REF_NAME == *-* ]] && flags+=(--prerelease)
           gh release create "$GITHUB_REF_NAME" release/* --repo "$GITHUB_REPOSITORY" "${flags[@]}"
