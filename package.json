@@ -1,6 +1,6 @@
 {
   "name": "floater",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "type": "module",
   "description": "Picture in Picture for Steam Game Mode",
