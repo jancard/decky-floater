@@ -1,6 +1,6 @@
 # Third-Party Notices
 
-Floater's original code is Copyright (C) 2026 moderntimes and licensed under GPL-3.0-or-later (see
+Floater's original code is Copyright (C) 2026 jancard and licensed under GPL-3.0-or-later (see
 LICENSE, which also carries the BSD 3-Clause notice of the Decky plugin template it started from).
 Dependency and icon licences remain separate.
 

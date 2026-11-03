@@ -1,0 +1,25 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    # The Decky Plugin Store builds the helper in this SteamOS image too.
+    container: ghcr.io/steamdeckhomebrew/holo-base:latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-holo
+      - name: Test, build and package
+        run: sh scripts/ci.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: floater
+          path: release/

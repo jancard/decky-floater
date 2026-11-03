@@ -18,17 +18,18 @@ Floater is a [Decky Loader](https://github.com/SteamDeckHomebrew/decky-loader) p
 
 - Decky Loader 3.x.
 - Steam Game Mode (Gamescope with its PipeWire capture stream), as on SteamOS 3.x and similar Game Mode sessions.
-- Tested with Gamescope 3.16.25 on desktop Game Mode. Steam Deck testing is in progress.
+
+Floater uses Gamescope behaviour that isn't a stable public interface, so a Gamescope update can break it until Floater is updated.
 
 ## Installation
 
 ### Decky Plugin Store
 
-Not yet available. Once listed, open the Quick Access Menu, go to Decky → Store, and install **Floater**.
+Floater isn't in the Decky Plugin Store yet.
 
 ### Manual install
 
-1. Download `floater-vX.Y.Z.zip` from the releases page.
+1. Download `floater-vX.Y.Z.zip` from the [latest release](../../releases/latest).
 2. In Game Mode, open Decky's settings, turn on **Developer mode**, then go to **Developer → Install Plugin from ZIP** and choose the file.
 
 ## Usage
@@ -78,40 +79,15 @@ pnpm test           # Python and helper unit tests
 pnpm run package    # builds dist/, the helper, and release/floater-vX.Y.Z.zip
 ```
 
-The Decky Plugin Store builds the helper with `backend/Dockerfile` in the SteamOS `holo-base` image. CI does the same (`scripts/ci.sh`).
+The Decky Plugin Store builds the helper with `backend/Dockerfile` in the SteamOS `holo-base` image. GitHub Actions does the same for every change (`scripts/ci.sh`), and a weekly job checks new Gamescope and MangoHud releases for the interfaces Floater depends on (`scripts/compat.json`).
 
-### Continuous integration
+## Contributing
 
-Forgejo Actions workflows live in `.forgejo/workflows/` and need a runner with the `docker` label:
-
-- **CI**: tests, builds and packages every push and pull request, and keeps the ZIP as an artifact.
-- **Release**: on a `vX.Y.Z` tag that matches `package.json`, builds the ZIP and its SHA-256 and attaches them to a draft release. The draft is published by hand after device testing. It uses the job token, or a `RELEASE_TOKEN` secret if the token can't create releases.
-- **Upstream compatibility**: every Monday, checks the newest Gamescope and MangoHud tags for the interfaces Floater depends on (`scripts/compat.json`), and rebuilds against the current SteamOS image and the newest Decky libraries.
-
-### Maintenance
-
-Floater relies on Gamescope and Steam behaviour that isn't a public API. After updates, check:
-
-| Change | What can break | Where |
-| --- | --- | --- |
-| Gamescope | PipeWire node name `gamescope`, format keys `requested_size` (0x70000) and `focus_appid` (0x70001), BGRx frames; X11 properties `GAMESCOPE_FOCUSED_APP`, `GAMESCOPE_FOCUSABLE_APPS`, `GAMESCOPE_EXTERNAL_OVERLAY`; one external overlay drawn at a time | `backend/src/pip-overlay.c`, `scripts/compat.json` |
-| MangoHud | `mangoapp` window title, used to mirror its overlay | `backend/src/pip-overlay.c` |
-| Steam client | `SteamUIStore.MainRunningAppID`, `appStore.GetAppOverviewByAppID`, Library route | `src/index.tsx` |
-| Decky Loader | `@decky/api`, `@decky/ui`, plugin environment variables | `src/index.tsx`, `main.py` |
-| SteamOS | PipeWire and X11 libraries the helper links against | `backend/Dockerfile` |
-
-When the compatibility workflow reports a newer Gamescope or MangoHud, test Floater on a device with it, then update `verified` in `scripts/compat.json`.
-
-### Releasing
-
-1. Update `version` in `package.json` and commit.
-2. Tag the commit `vX.Y.Z` and push the tag. CI creates a draft release with the ZIP.
-3. Install the ZIP on a Steam Deck and a desktop Game Mode setup, then publish the draft.
-4. For the Decky Plugin Store, update Floater's entry in [decky-plugin-database](https://github.com/SteamDeckHomebrew/decky-plugin-database) to the new commit.
+Bug reports and pull requests are welcome. When reporting a problem, please include your device, SteamOS (or distribution) and Gamescope versions, and the log from `~/homebrew/logs/Floater/`.
 
 ## License
 
-Floater is Copyright (C) 2026 moderntimes and licensed under the GNU General Public License v3.0 or later. See [LICENSE](LICENSE), which also contains the BSD 3-Clause notice of the Decky plugin template. Third-party licences are listed in [THIRD_PARTY_NOTICES.md](defaults/THIRD_PARTY_NOTICES.md).
+Floater is Copyright (C) 2026 jancard and licensed under the GNU General Public License v3.0 or later. See [LICENSE](LICENSE), which also contains the BSD 3-Clause notice of the Decky plugin template. Third-party licences are listed in [THIRD_PARTY_NOTICES.md](defaults/THIRD_PARTY_NOTICES.md).
 
 ## Credits
 

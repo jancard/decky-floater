@@ -1,0 +1,44 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container: ghcr.io/steamdeckhomebrew/holo-base:latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-holo
+      - name: Check the tag matches package.json
+        run: |
+          version="v$(node -p 'require("./package.json").version')"
+          test "$GITHUB_REF_NAME" = "$version" || { echo "Tag $GITHUB_REF_NAME does not match $version"; exit 1; }
+      - name: Test, build and package
+        run: sh scripts/ci.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release
+          path: release/
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: release
+          path: release
+      - name: Create a draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          flags=(--draft --generate-notes --title "Floater $GITHUB_REF_NAME")
+          [[ $GITHUB_REF_NAME == *-* ]] && flags+=(--prerelease)
+          gh release create "$GITHUB_REF_NAME" release/* --repo "$GITHUB_REPOSITORY" "${flags[@]}"

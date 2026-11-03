@@ -4,8 +4,16 @@
   "private": true,
   "type": "module",
   "description": "Picture in Picture for Steam Game Mode",
-  "author": "moderntimes <modrntimes@protonmail.com>",
+  "author": "jancard <jancard@pm.me>",
   "license": "GPL-3.0-or-later",
+  "homepage": "https://github.com/jancard/decky-floater#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jancard/decky-floater.git"
+  },
+  "bugs": {
+    "url": "https://github.com/jancard/decky-floater/issues"
+  },
   "scripts": {
     "build": "tsc --noEmit && rollup -c",
     "test": "python3 -m unittest discover -s tests -t . -v && make -C backend test",

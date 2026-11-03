@@ -1,0 +1,10 @@
+name: Set up SteamOS build tools
+description: Installs Floater's build dependencies in the holo-base container.
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      run: |
+        pacman -Syu --noconfirm --needed git nodejs npm python gcc make pkgconf libpipewire \
+          libx11 libxext libxrender libxcomposite libxdamage libxfixes
+        npm install -g pnpm@9
