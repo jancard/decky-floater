@@ -20,7 +20,7 @@ jobs:
           test "$GITHUB_REF_NAME" = "$version" || { echo "Tag $GITHUB_REF_NAME does not match $version"; exit 1; }
       - name: Test, build and package
         run: sh scripts/ci.sh
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: release
           path: release/
